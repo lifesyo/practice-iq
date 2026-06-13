@@ -1003,23 +1003,25 @@ const Sync = {
 
   _doc(){ return this.db.collection('drilliq').doc('shared'); },
 
-  /* 共有データの購読（リアルタイム反映） */
+  /* 共有データの購読（リアルタイム反映）
+     自分の未確定書き込み（hasPendingWrites）以外は常に反映する。
+     ※以前は版番号の大小で判定していたが、端末ごとの時計のズレで
+       他端末の削除・編集が反映されないことがあったため、方式を変更。 */
   _unsub: null,
   listen(){
     if (!this.ready || this._unsub) return;
-    this._unsub = this._doc().onSnapshot(snap => {
+    this._unsub = this._doc().onSnapshot({ includeMetadataChanges: true }, snap => {
+      /* この端末が今送った書き込みがサーバー確定する前の“こだま”は無視 */
+      if (snap.metadata && snap.metadata.hasPendingWrites){ this.setStat(); return; }
+
       const d = snap.data();
-      if (!d) return;
-      const remoteV = +d.version || 0;
-      const localV  = +(localStorage.getItem(LS.remotev) || 0);
-      /* 自分が今送った版より新しい時だけ反映（自分の編集を巻き戻さない） */
-      if (remoteV >= localV){
-        if (Array.isArray(d.menus))      Store.menus      = d.menus;
-        if (Array.isArray(d.principles)) Store.principles = d.principles;
-        localStorage.setItem(LS.remotev, String(remoteV));
-        Store.save();
-        refreshViews();
-      }
+      if (!d){ this.setStat(); return; }
+
+      if (Array.isArray(d.menus))      Store.menus      = d.menus;
+      if (Array.isArray(d.principles)) Store.principles = d.principles;
+      localStorage.setItem(LS.remotev, String(+d.version || 0));
+      Store.save();
+      refreshViews();
       this.setStat();
     }, err => {
       this.lastError = 'listen:' + (err && err.code || '');
@@ -1027,7 +1029,7 @@ const Sync = {
     });
   },
 
-  /* 管理者の編集を共有ドキュメントへ保存 */
+  /* 管理者の編集を共有ドキュメントへ保存（ドキュメントを丸ごと上書き＝削除も確実に反映） */
   push(){
     if (!this.ready || !this.isAdmin) return Promise.resolve(false);
     const version = Math.floor(Date.now() / 1000);
@@ -2281,17 +2283,20 @@ function init(){
   /* Firebase（Googleログイン＋クラウド同期）を初期化 */
   try { Sync.init(); } catch (e) { renderAuth(); }
 
-  /* data.json による更新（リポジトリに data.json を置いた場合のみ・任意） */
-  fetch('./data.json', { cache: 'no-store' })
-    .then(r => (r.ok ? r.json() : null))
-    .then(j => {
-      if (j && Store.applyRemote(j)){
-        toast('練習データを最新版に更新しました');
-        const bv = $('.view[data-view="book"]');
-        if (bv && bv.classList.contains('on')) renderBook();
-      }
-    })
-    .catch(() => {});
+  /* data.json による更新（旧方式・任意）。
+     Firebase未設定のときだけ有効。設定済みならクラウド同期が正なので使わない。 */
+  if (!(typeof Sync !== 'undefined' && Sync.configured && Sync.configured())){
+    fetch('./data.json', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => {
+        if (j && Store.applyRemote(j)){
+          toast('練習データを最新版に更新しました');
+          const bv = $('.view[data-view="book"]');
+          if (bv && bv.classList.contains('on')) renderBook();
+        }
+      })
+      .catch(() => {});
+  }
 
   /* Service Worker（PWA・オフライン対応） */
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
