@@ -1,0 +1,1909 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>Drill IQ｜バスケ練習メニューAI</title>
+<meta name="description" content="中学・高校バスケ指導者のためのAI練習メニュー検索アプリ">
+<meta name="theme-color" content="#0B1017">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Drill IQ">
+<style>
+/* ============================================================
+   Drill IQ — バスケ練習メニューAI
+   ダークプロテーマ / 体育館での視認性重視 / iPhone・iPad対応
+   ============================================================ */
+:root{
+  --bg:#0B1017;
+  --bg2:#0E1520;
+  --panel:#141C28;
+  --panel2:#1A2433;
+  --line:#243245;
+  --line2:#2E3F56;
+  --text:#ECF2F9;
+  --sub:#93A4B8;
+  --faint:#5C6F85;
+  --acc:#F97316;        /* ball orange */
+  --acc-soft:#F9731622;
+  --acc-line:#F9731655;
+  --good:#34D399;
+  --warn:#FBBF24;
+  --bad:#F87171;
+  --radius:14px;
+  --radius-s:10px;
+  --tabbar-h:62px;
+  --maxw:780px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{height:100%}
+body{
+  min-height:100%;
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP","Segoe UI",Roboto,sans-serif;
+  font-size:15px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior-y:none;
+}
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer;-webkit-user-select:none;user-select:none}
+input,textarea,select{font-family:inherit;color:var(--text)}
+a{color:var(--acc)}
+::placeholder{color:var(--faint)}
+::-webkit-scrollbar{width:0;height:0}
+
+/* ---------- ヘッダー（3Pアークの署名モチーフ） ---------- */
+header.app{
+  position:sticky;top:0;z-index:50;
+  background:rgba(11,16,23,.86);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);
+  padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;
+  overflow:hidden;
+}
+header.app::after{ /* コートの3ポイントアーク */
+  content:"";position:absolute;left:50%;bottom:-150px;transform:translateX(-50%);
+  width:340px;height:200px;border:1.5px solid #F9731633;border-radius:50% 50% 0 0/100% 100% 0 0;
+  pointer-events:none;
+}
+.brand{display:flex;align-items:baseline;gap:10px;max-width:var(--maxw);margin:0 auto}
+.brand .mark{
+  font-weight:900;font-size:20px;letter-spacing:.14em;font-style:italic;
+  background:linear-gradient(180deg,#FFB877,var(--acc));
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+.brand .ball{width:10px;height:10px;border-radius:50%;background:var(--acc);align-self:center;box-shadow:0 0 12px #F9731688;flex:none}
+.brand .tag{font-size:11px;color:var(--sub);letter-spacing:.08em;font-weight:600}
+
+/* ---------- レイアウト ---------- */
+main{max-width:var(--maxw);margin:0 auto;padding:16px 16px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 28px)}
+.view{display:none}
+.view.on{display:block;animation:vin .22s ease}
+@keyframes vin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.h-eyebrow{font-size:11px;font-weight:800;letter-spacing:.18em;color:var(--acc);margin-bottom:4px}
+.h-title{font-size:21px;font-weight:800;letter-spacing:.02em;margin-bottom:4px}
+.h-desc{font-size:13px;color:var(--sub);margin-bottom:16px}
+
+/* ---------- タブバー ---------- */
+nav.tabbar{
+  position:fixed;left:0;right:0;bottom:0;z-index:60;
+  background:rgba(14,19,28,.92);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.tabbar .inner{max-width:var(--maxw);margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);height:var(--tabbar-h)}
+.tabbar button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--faint);font-size:10px;font-weight:700;letter-spacing:.04em;transition:color .15s}
+.tabbar button .ic{font-size:20px;line-height:1;filter:grayscale(1) opacity(.55);transition:filter .15s}
+.tabbar button.on{color:var(--acc)}
+.tabbar button.on .ic{filter:none}
+
+/* ---------- 共通部品 ---------- */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  border-radius:var(--radius-s);font-weight:800;font-size:14px;
+  padding:12px 18px;border:1px solid var(--line2);background:var(--panel2);
+  transition:transform .06s, background .15s;
+}
+.btn:active{transform:scale(.97)}
+.btn-acc{background:var(--acc);border-color:var(--acc);color:#1A0E04}
+.btn-ghost{background:transparent}
+.btn-danger{color:var(--bad);border-color:#F8717144}
+.btn-sm{padding:7px 12px;font-size:12.5px;border-radius:9px}
+.btn-block{display:flex;width:100%}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.field{
+  width:100%;background:var(--bg2);border:1px solid var(--line2);border-radius:var(--radius-s);
+  padding:12px 14px;font-size:16px;outline:none;transition:border-color .15s;
+  -webkit-appearance:none;appearance:none;
+}
+.field:focus{border-color:var(--acc-line)}
+textarea.field{min-height:88px;resize:vertical;line-height:1.6}
+select.field{background-image:linear-gradient(45deg,transparent 50%,var(--sub) 50%),linear-gradient(135deg,var(--sub) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+label.lbl{display:block;font-size:12px;font-weight:800;color:var(--sub);letter-spacing:.06em;margin:14px 0 6px}
+label.lbl:first-child{margin-top:0}
+label.lbl .req{color:var(--acc);margin-left:3px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hint{font-size:11.5px;color:var(--faint);margin-top:5px;line-height:1.5}
+
+/* チップ */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips.scroll{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;margin:0 -16px;padding-left:16px;padding-right:16px}
+.chip{
+  flex:none;font-size:12.5px;font-weight:700;padding:7px 13px;border-radius:999px;
+  border:1px solid var(--line2);background:var(--panel2);color:var(--sub);
+  transition:all .15s;white-space:nowrap;
+}
+.chip.on{background:var(--acc-soft);border-color:var(--acc-line);color:var(--acc)}
+.chip:active{transform:scale(.96)}
+.catchip{
+  display:inline-flex;align-items:center;font-size:11px;font-weight:800;letter-spacing:.04em;
+  padding:3px 10px;border-radius:999px;white-space:nowrap;
+}
+
+/* スコアボード風タイムバッジ（署名要素） */
+.tbadge{
+  display:inline-flex;align-items:center;gap:4px;
+  font-variant-numeric:tabular-nums;font-weight:900;font-size:13px;letter-spacing:.04em;
+  background:#0A0E14;border:1px solid var(--line2);border-radius:7px;
+  color:var(--acc);padding:3px 9px;white-space:nowrap;
+}
+.tbadge small{color:var(--faint);font-size:10px;font-weight:700}
+
+/* ---------- AI検索 ---------- */
+.searchbox{display:flex;gap:8px;margin-bottom:10px}
+.searchbox .field{flex:1}
+.searchbox .btn-acc{flex:none;padding:0 18px}
+.examples{margin-bottom:18px}
+.examples .ex-lbl{font-size:11px;color:var(--faint);font-weight:700;letter-spacing:.08em;margin-bottom:7px}
+.ai-status{display:flex;align-items:center;gap:9px;color:var(--sub);font-size:13px;font-weight:600;padding:14px 4px}
+.ai-status .dot{width:8px;height:8px;border-radius:50%;background:var(--acc);animation:pulse 1s ease infinite}
+@keyframes pulse{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+.intent{
+  background:linear-gradient(135deg,#16202E,#121A26);border:1px solid var(--line);
+  border-left:3px solid var(--acc);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;
+}
+.intent .it-lbl{font-size:10.5px;font-weight:900;letter-spacing:.16em;color:var(--acc);margin-bottom:6px}
+.intent .it-msg{font-size:13.5px;color:var(--text);line-height:1.7}
+.intent .it-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.intent .it-chips span{font-size:11px;font-weight:700;color:var(--sub);background:var(--bg2);border:1px solid var(--line2);border-radius:6px;padding:3px 8px}
+
+/* AI回答カード（指定フォーマット） */
+.result{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:14px;overflow:hidden}
+.result .r-head{padding:14px 16px 12px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+.result .r-head .num{
+  flex:none;width:26px;height:26px;border-radius:8px;background:var(--acc-soft);border:1px solid var(--acc-line);
+  color:var(--acc);font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;
+}
+.result .r-head .ttl{flex:1;min-width:0}
+.result .r-head .name{font-size:16.5px;font-weight:800;line-height:1.45}
+.result .r-head .meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center}
+.result .r-body{padding:14px 16px 16px}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:13px}
+.kv .k{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:9px 10px;text-align:center}
+.kv .k .kl{font-size:10px;font-weight:800;color:var(--faint);letter-spacing:.1em;margin-bottom:2px}
+.kv .k .kvv{font-size:13.5px;font-weight:800;font-variant-numeric:tabular-nums}
+.sec{margin-bottom:13px}
+.sec:last-child{margin-bottom:0}
+.sec .s-lbl{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:900;letter-spacing:.1em;color:var(--sub);margin-bottom:6px}
+.sec .s-lbl::before{content:"";width:3px;height:12px;border-radius:2px;background:var(--acc)}
+.sec p{font-size:14px;line-height:1.8;color:#D6E0EC}
+.sec ul{list-style:none}
+.sec ul li{position:relative;padding-left:16px;font-size:13.5px;line-height:1.7;color:#D6E0EC;margin-bottom:4px}
+.sec ul li::before{content:"";position:absolute;left:2px;top:.62em;width:6px;height:6px;border-radius:50%;background:var(--acc-line)}
+.sec.warn ul li::before{background:#FBBF2466}
+.yt{display:flex;align-items:center;gap:12px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px;text-decoration:none}
+.yt img{width:96px;height:54px;border-radius:7px;object-fit:cover;background:#000;flex:none}
+.yt .yt-t{font-size:13px;font-weight:700;color:var(--text)}
+.yt .yt-s{font-size:11px;color:var(--faint)}
+.yt-none{font-size:12.5px;color:var(--faint);padding:4px 2px}
+.r-foot{display:flex;gap:8px;padding:0 16px 14px}
+.star{font-size:18px;line-height:1;filter:grayscale(1) opacity(.4);transition:filter .15s,transform .1s}
+.star.on{filter:none}
+.star:active{transform:scale(1.25)}
+.relsec{margin-top:20px}
+.relsec .h-eyebrow{margin-bottom:8px}
+.principle{background:linear-gradient(135deg,#141D2B,#111927);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px}
+.principle .p-ttl{display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:800;margin-bottom:4px}
+.principle .p-ttl::before{content:"§";color:var(--acc);font-weight:900}
+.principle .p-body{font-size:13.5px;line-height:1.8;color:#C9D5E2}
+.empty{
+  text-align:center;padding:38px 20px;color:var(--sub);
+  border:1.5px dashed var(--line2);border-radius:var(--radius);margin-bottom:14px;
+}
+.empty .e-ic{font-size:30px;margin-bottom:8px;filter:grayscale(.4)}
+.empty .e-t{font-weight:800;font-size:14.5px;margin-bottom:4px;color:var(--text)}
+.empty .e-d{font-size:12.5px;line-height:1.7}
+
+/* ---------- プラン生成 ---------- */
+.plan-head{
+  background:linear-gradient(135deg,#1A2436,#141D2B);border:1px solid var(--line);border-left:3px solid var(--acc);
+  border-radius:var(--radius);padding:14px 16px;margin-bottom:12px;
+}
+.plan-head .ph-t{font-size:15px;font-weight:900;letter-spacing:.02em}
+.plan-head .ph-m{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.plan-head .ph-m span{font-size:11.5px;font-weight:700;color:var(--sub);background:#0d141f;border:1px solid var(--line2);border-radius:6px;padding:3px 9px}
+.block{display:flex;gap:12px;margin-bottom:0;position:relative;padding:13px 0}
+.block:not(:last-child)::after{content:"";position:absolute;left:21px;top:46px;bottom:-8px;width:2px;background:var(--line)}
+.block .bt{flex:none;width:44px;text-align:center}
+.block .bt .tbadge{width:44px;justify-content:center;padding:5px 0;flex-direction:column;gap:0;line-height:1.2}
+.block .bc{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+.block .bc .b-lbl{font-size:10.5px;font-weight:900;letter-spacing:.14em;color:var(--acc);margin-bottom:3px}
+.block .bc .b-name{font-size:14.5px;font-weight:800;line-height:1.5}
+.block .bc .b-name.none{color:var(--faint);font-weight:600;font-size:13px}
+.block .bc .b-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;align-items:center}
+.block .bc .b-acts{display:flex;gap:6px;margin-top:9px}
+.plan-total{
+  display:flex;justify-content:space-between;align-items:center;
+  background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:12px 16px;margin-top:12px;
+  font-weight:900;font-variant-numeric:tabular-nums;
+}
+.plan-total .pt-l{font-size:12px;color:var(--sub);letter-spacing:.1em}
+.plan-total .pt-v{font-size:18px;color:var(--acc)}
+.plan-acts{display:flex;gap:8px;margin-top:12px}
+.plan-acts .btn{flex:1}
+
+/* ---------- 教科書 ---------- */
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:0;background:var(--bg2);border:1px solid var(--line2);border-radius:11px;padding:3px;margin-bottom:14px}
+.seg button{padding:9px 6px;font-size:12.5px;font-weight:800;border-radius:8px;color:var(--sub);transition:all .15s}
+.seg button.on{background:var(--panel2);color:var(--text);box-shadow:0 1px 6px #0006}
+.bookbar{display:flex;gap:8px;margin-bottom:12px}
+.bookbar .field{flex:1;padding:10px 14px;font-size:16px}
+.count{font-size:11.5px;color:var(--faint);font-weight:700;margin:2px 2px 10px;letter-spacing:.04em}
+.mcard{
+  display:flex;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:13px 14px;margin-bottom:9px;transition:transform .06s;
+}
+.mcard:active{transform:scale(.985)}
+.mcard .mc-main{flex:1;min-width:0}
+.mcard .mc-name{font-size:14.5px;font-weight:800;line-height:1.45;display:flex;align-items:center;gap:6px}
+.mcard .mc-name .ytdot{flex:none;font-size:10px}
+.mcard .mc-sub{font-size:12px;color:var(--sub);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mcard .mc-meta{display:flex;gap:6px;align-items:center;margin-top:7px;flex-wrap:wrap}
+.mcard .mc-side{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.pcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:9px}
+.pcard:active{transform:scale(.99)}
+
+/* ---------- 管理 ---------- */
+.gate{max-width:380px;margin:34px auto 0;text-align:center}
+.gate .g-ic{font-size:34px;margin-bottom:10px}
+.gate .g-t{font-weight:900;font-size:17px;margin-bottom:4px}
+.gate .g-d{font-size:12.5px;color:var(--sub);margin-bottom:18px;line-height:1.7}
+.adm-row{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:8px}
+.adm-row .ar-main{flex:1;min-width:0}
+.adm-row .ar-name{font-size:13.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm-row .ar-sub{font-size:11px;color:var(--faint);margin-top:2px}
+.adm-row .ar-acts{flex:none;display:flex;gap:6px}
+.adm-add{position:sticky;bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);z-index:5;display:flex;justify-content:flex-end;pointer-events:none;margin-top:14px}
+.adm-add .btn{pointer-events:auto;box-shadow:0 6px 24px #000A;border-radius:999px;padding:13px 22px}
+.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.statgrid .st{background:var(--bg2);border:1px solid var(--line);border-radius:11px;padding:12px 8px;text-align:center}
+.statgrid .st .sv{font-size:21px;font-weight:900;color:var(--acc);font-variant-numeric:tabular-nums}
+.statgrid .st .sl{font-size:10.5px;color:var(--faint);font-weight:700;letter-spacing:.08em;margin-top:2px}
+
+/* ---------- モーダル ---------- */
+.modal-bg{
+  position:fixed;inset:0;z-index:100;background:#04070BCC;
+  -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  display:none;align-items:flex-end;justify-content:center;
+}
+.modal-bg.on{display:flex;animation:fin .18s ease}
+@keyframes fin{from{opacity:0}to{opacity:1}}
+.sheet{
+  width:100%;max-width:680px;max-height:88dvh;display:flex;flex-direction:column;
+  background:var(--panel);border:1px solid var(--line2);border-bottom:none;
+  border-radius:20px 20px 0 0;animation:sup .26s cubic-bezier(.32,.72,.32,1);
+}
+@keyframes sup{from{transform:translateY(40px);opacity:.6}to{transform:none;opacity:1}}
+@media(min-width:700px){
+  .modal-bg{align-items:center;padding:24px}
+  .sheet{border-radius:20px;border-bottom:1px solid var(--line2);max-height:86dvh}
+}
+.sheet .sh-head{
+  flex:none;display:flex;align-items:center;gap:10px;padding:15px 18px 12px;border-bottom:1px solid var(--line);
+}
+.sheet .sh-head .sh-t{flex:1;font-size:15.5px;font-weight:900;letter-spacing:.02em}
+.sheet .sh-head .x{flex:none;width:32px;height:32px;border-radius:50%;background:var(--panel2);font-size:15px;color:var(--sub);display:flex;align-items:center;justify-content:center}
+.sheet .sh-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 18px calc(20px + env(safe-area-inset-bottom))}
+.sheet .sh-body .result{border:none;background:transparent;margin:0}
+.sheet .sh-body .result .r-head{padding-left:0;padding-right:0;padding-top:0}
+.sheet .sh-body .result .r-body{padding-left:0;padding-right:0}
+.sheet .sh-body .result .r-foot{padding-left:0;padding-right:0}
+
+/* ---------- トースト ---------- */
+#toast{
+  position:fixed;left:50%;bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 18px);
+  transform:translateX(-50%) translateY(20px);z-index:200;opacity:0;pointer-events:none;
+  background:#1C2838;border:1px solid var(--line2);color:var(--text);
+  font-size:13px;font-weight:700;padding:11px 20px;border-radius:999px;
+  box-shadow:0 8px 30px #000B;transition:all .25s;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis;
+}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media(min-width:700px){
+  body{font-size:15.5px}
+  .kv{grid-template-columns:repeat(4,1fr)}
+  main{padding-top:22px}
+}
+</style>
+</head>
+<body>
+
+<header class="app">
+  <div class="brand">
+    <span class="mark">DRILL&nbsp;IQ</span>
+    <span class="ball"></span>
+    <span class="tag">練習メニューAI</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= AI検索 ================= -->
+  <section class="view on" data-view="search">
+    <div class="h-eyebrow">AI SEARCH</div>
+    <div class="h-title">どんな練習をお探しですか？</div>
+    <div class="h-desc">チームの状況や練習の目的を、ふだんの言葉のまま入力してください。</div>
+
+    <div class="searchbox">
+      <input id="q" class="field" type="search" enterkeyhint="search" placeholder="例：速攻の判断力を鍛えたい">
+      <button class="btn btn-acc" data-act="search">検索</button>
+    </div>
+
+    <div class="examples">
+      <div class="ex-lbl">入力例（タップで検索）</div>
+      <div class="chips" id="ex-chips"></div>
+    </div>
+
+    <div id="search-out"></div>
+  </section>
+
+  <!-- ================= プラン生成 ================= -->
+  <section class="view" data-view="plan">
+    <div class="h-eyebrow">PRACTICE PLAN</div>
+    <div class="h-title">練習プランを自動生成</div>
+    <div class="h-desc">条件を入力すると、登録メニューを組み合わせて1日の練習プランを作成します。</div>
+
+    <div class="card">
+      <div class="row2">
+        <div>
+          <label class="lbl">対象学年</label>
+          <select id="pl-grade" class="field">
+            <option value="中学">中学生</option>
+            <option value="高校">高校生</option>
+          </select>
+        </div>
+        <div>
+          <label class="lbl">人数</label>
+          <input id="pl-people" class="field" type="number" inputmode="numeric" min="1" max="40" value="12">
+        </div>
+      </div>
+      <label class="lbl">練習時間</label>
+      <div class="chips" id="pl-time-chips"></div>
+      <label class="lbl">強化したい項目（最大3つ）</label>
+      <div class="chips" id="pl-focus-chips"></div>
+      <div style="margin-top:18px">
+        <button class="btn btn-acc btn-block" data-act="gen-plan">プランを生成する</button>
+      </div>
+    </div>
+
+    <div id="plan-out"></div>
+  </section>
+
+  <!-- ================= 教科書 ================= -->
+  <section class="view" data-view="book">
+    <div class="h-eyebrow">TEXTBOOK</div>
+    <div class="h-title">教科書モード</div>
+    <div class="h-desc">登録されている練習メニューと原則を一覧できます。</div>
+
+    <div class="seg" id="book-seg">
+      <button data-mode="menus" class="on">練習メニュー</button>
+      <button data-mode="principles">原則</button>
+      <button data-mode="bookmarks">★ ブックマーク</button>
+    </div>
+
+    <div class="bookbar">
+      <input id="book-q" class="field" type="search" placeholder="キーワードで絞り込み">
+    </div>
+
+    <div class="chips scroll" id="book-cats"></div>
+    <div class="count" id="book-count"></div>
+    <div id="book-list"></div>
+  </section>
+
+  <!-- ================= 管理 ================= -->
+  <section class="view" data-view="admin">
+    <div class="h-eyebrow">ADMIN</div>
+    <div class="h-title">管理画面</div>
+
+    <div id="admin-gate" class="gate">
+      <div class="g-ic">🔒</div>
+      <div class="g-t">管理者専用です</div>
+      <div class="g-d">練習メニュー・原則の登録や、データの書き出し／読み込みができます。</div>
+      <input id="admin-pass" class="field" type="password" placeholder="パスコード" style="text-align:center;margin-bottom:10px">
+      <button class="btn btn-acc btn-block" data-act="admin-login">ログイン</button>
+    </div>
+
+    <div id="admin-panel" style="display:none">
+      <div class="seg" id="adm-seg">
+        <button data-amode="menus" class="on">練習メニュー</button>
+        <button data-amode="principles">原則</button>
+        <button data-amode="data">データ</button>
+      </div>
+      <div id="admin-body"></div>
+      <div class="adm-add" id="adm-add"></div>
+    </div>
+  </section>
+
+</main>
+
+<nav class="tabbar">
+  <div class="inner">
+    <button data-tab="search" class="on"><span class="ic">🔍</span>AI検索</button>
+    <button data-tab="plan"><span class="ic">📋</span>プラン</button>
+    <button data-tab="book"><span class="ic">📖</span>教科書</button>
+    <button data-tab="admin"><span class="ic">⚙️</span>管理</button>
+  </div>
+</nav>
+
+<div class="modal-bg" id="modal">
+  <div class="sheet">
+    <div class="sh-head">
+      <div class="sh-t" id="modal-title"></div>
+      <button class="x" data-act="modal-close">✕</button>
+    </div>
+    <div class="sh-body" id="modal-body"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ============================================================
+   定数・辞書
+   ============================================================ */
+const APP_VER = '1.0.0';
+const SEED_VERSION = 1;            // 初期データのバージョン（data.json運用時はそちらが優先）
+const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
+
+const CATS = ['ドリブル','パス','シュート','リバウンド','ディフェンス','トランジション','1on1','2on2','3on3','チームオフェンス','チームディフェンス','体力向上'];
+const CAT_COLORS = {
+  'ドリブル':'#FB923C','パス':'#38BDF8','シュート':'#FB7185','リバウンド':'#FBBF24',
+  'ディフェンス':'#60A5FA','トランジション':'#34D399','1on1':'#A78BFA','2on2':'#C084FC',
+  '3on3':'#E879F9','チームオフェンス':'#F87171','チームディフェンス':'#818CF8','体力向上':'#A3E635'
+};
+const GRADES = ['中学','高校'];
+
+// 検索用：類義語グループ（クエリに含まれていたら cats / kws をブースト）
+const SYN = [
+  {words:['ドリブル','ハンドリング','ボールハンドリング','どりぶる'], cats:['ドリブル']},
+  {words:['パス','パッシング','パス回し','ぱす'], cats:['パス']},
+  {words:['シュート','シューティング','シュート力','フィニッシュ','レイアップ','3ポイント','スリーポイント','ジャンプシュート'], cats:['シュート']},
+  {words:['リバウンド','ボックスアウト','スクリーンアウト'], cats:['リバウンド']},
+  {words:['ディフェンス','守備','守り','でぃふぇんす','df','フットワーク'], cats:['ディフェンス','チームディフェンス']},
+  {words:['オフェンス','攻撃','攻め','せめ'], cats:['チームオフェンス']},
+  {words:['トランジション','速攻','ファストブレイク','切り替え','走るバスケ','アーリー'], cats:['トランジション']},
+  {words:['1on1','1対1','ワンオンワン','1オン1'], cats:['1on1']},
+  {words:['2on2','2対2','ツーメン'], cats:['2on2']},
+  {words:['3on3','3対3','スリーメン','スリーオンスリー'], cats:['3on3']},
+  {words:['体力','スタミナ','持久力','走力','フィジカル','コンディショニング','走り込み','体力づくり','体力作り'], cats:['体力向上']},
+  {words:['ゾーン','ゾーンディフェンス','2-3','23ゾーン'], kws:['ゾーン','ゾーンアタック','ゾーン対策','2-3ゾーン']},
+  {words:['判断','判断力','認知','視野','状況判断','ディシジョン'], kws:['判断','認知']},
+  {words:['スペーシング','スペース','距離感'], kws:['スペーシング']},
+  {words:['スクリーン','ピックアンドロール','ピック&ロール','ピック','pnr'], kws:['スクリーン','ピックアンドロール']},
+  {words:['ヘルプ','ローテーション','カバー'], kws:['ヘルプ','ローテーション']},
+  {words:['ミート','ボールミート'], kws:['ミート']},
+  {words:['アウトナンバー','数的優位','2対1','3対2','2on1','3on2'], kws:['アウトナンバー']},
+  {words:['ゲーム形式','ゲーム','スクリメージ','実戦','試合形式'], kws:['ゲーム形式','スクリメージ']},
+  {words:['ウォームアップ','アップ','ウォーミングアップ','準備運動'], kws:['ウォームアップ']},
+  {words:['基礎','基本','ファンダメンタル','初心者','未経験','はじめて','初めて'], kws:['基礎','初心者']},
+  {words:['クローズアウト'], kws:['クローズアウト']},
+  {words:['カット','パスアンドカット','ギブアンドゴー'], kws:['パスアンドカット']},
+];
+
+// 「体力がない・初心者」系 → 低強度を優先
+const LOW_WORDS = ['体力のない','体力がない','体力が無い','体力に自信','初心者','未経験','基礎から','弱い','きつくない','楽しく','ミニバス上がり','入部したて','1年生','軽め','軽い','軽く','前日','調整','疲労','リカバリー','クールダウン'];
+const HIGH_WORDS = ['追い込', 'きつい', 'ハード', '高強度', '走り込'];
+
+// 検索時に無視する語
+const STOP = ['練習','メニュー','ドリル','したい','をしたい','がしたい','したいです','ください','下さい','教えて','おしえて','知りたい','です','ます','できる','できます','向け','向き','ため','ための','方法','やり方','おすすめ','オススメ','について','とは','何か','ある','あります','いい','良い','して','する','やる','やりたい','鍛えたい','鍛える','強化','上手','うまく','なりたい','させたい','の','を','に','が','は','で','と','へ','や','も','な','から','まで','より','こと','もの','選手','チーム','うち','子','たち','生'];
+
+/* ============================================================
+   初期データ：練習メニュー（25件）
+   ※ youtubeUrl（yt）は空欄です。管理画面から実際のURLを登録してください。
+   ※ ここを書き換えて再デプロイ、または data.json を置くと全端末に反映されます。
+   ============================================================ */
+const SEED_MENUS = [
+{
+ id:'seed-d1', name:'ボールハンドリング・サーキット', cat:'ドリブル',
+ purpose:'ボール感覚と基礎ハンドリングの向上（ウォームアップを兼ねる）',
+ grades:['中学','高校'], minP:1, maxP:30, time:10, court:'コート不要（どこでも可）',
+ points:['目線を上げたまま行う','指先でコントロールし、手のひらに乗せない','「ミスしない最速」から徐々にスピードを上げる','左右差をなくす意識を持たせる'],
+ mistakes:['下を向いてボールだけを見てしまう','強く叩きすぎてコントロールを失う','利き手ばかりで行ってしまう'],
+ desc:'ボール回し（首・腰・脚）、フロントチェンジ、レッグスルー、ビハインド、2ボールドリブルなどを各30秒〜1分でローテーションするサーキット形式。待ち時間がなく全員同時にできるため、練習冒頭のウォームアップに最適。慣れてきたら「コーチが指差した方向や数字をコールさせる」など認知課題を加えると、自然と顔が上がる習慣がつく。',
+ kw:['ハンドリング','基礎','ウォームアップ','低強度','初心者','ボールコントロール','2ボール','アップ'], yt:''
+},
+{
+ id:'seed-d2', name:'リアクション・チェンジドリブル', cat:'ドリブル',
+ purpose:'視覚情報から判断してドリブルチェンジを選択する力を養う',
+ grades:['中学','高校'], minP:2, maxP:20, time:15, court:'半面〜全面',
+ points:['合図を「見てから」動く（予測で先に動かない）','チェンジ後は相手から遠い手にボールを置く','チェンジ直後の一歩目を強く速く'],
+ mistakes:['合図の前に動きを決めてしまう','チェンジ時にボールが体から離れる','上体が立ったままで重心が高い'],
+ desc:'ドリブルで進みながら、コーチの手信号（右・左・後ろなど）に反応してクロスオーバー、レッグスルー、リトリートなどを選択する。認知→判断→選択→実行の流れをドリブルスキルに乗せる練習。2人1組にして守備役がランダムに方向を指定する形へ発展させると、より試合に近い判断になる。',
+ kw:['判断','認知','リアクション','チェンジ','クロスオーバー','リトリート','プレッシャー'], yt:''
+},
+{
+ id:'seed-p1', name:'対面パス＆ミート', cat:'パス',
+ purpose:'正確なパスと、ボールミートの基礎習得',
+ grades:['中学','高校'], minP:2, maxP:30, time:10, court:'半面（向かい合えるスペース）',
+ points:['パスは相手の胸へ、捕れる範囲で強く','受け手は足を動かして迎えに行く（ボールミート）','キャッチと同時にターゲットハンドを示し、ピボットでリングへ向く'],
+ mistakes:['その場で待って捕る（ミートしない）','山なりの弱いパスになる','パスした後に足が止まる'],
+ desc:'2人1組で対面し、チェスト・バウンズ・オーバーヘッドの各パスを往復する。受け手は必ず1〜2歩前に出てミートし、キャッチ→ピボット→リングへ向くまでをワンセットで行う。距離を伸ばす、ワンハンドプッシュパスを加える、ディフェンス役を立たせるなど段階的に発展させる。',
+ kw:['パス','基礎','ミート','チェストパス','バウンズパス','キャッチ','低強度','初心者','ウォームアップ'], yt:''
+},
+{
+ id:'seed-p2', name:'4対3パスゲーム', cat:'パス',
+ purpose:'数的優位の状況で「誰が空いているか」を認知し、素早くパスを選択する力を磨く',
+ grades:['中学','高校'], minP:7, maxP:14, time:15, court:'半面',
+ points:['ボール保持者は「次に誰が空くか」まで見て判断する','受け手はパスラインに顔を出す（もらう動き）','守備側には2人を守るポジショニングを体験させる'],
+ mistakes:['ドリブルで状況を壊す（このゲームではドリブル禁止を推奨）','空いている味方を探すのが遅い','パスコースに動かずその場で待つ'],
+ desc:'オフェンス4人、ディフェンス3人で行うハーフコートのパス回しゲーム。ドリブル禁止、10本つないだら1点などのルールを設定する。常に1人フリーが生まれる状況で、認知→判断→パス選択を高速で繰り返せる。守備側にとってもローテーション判断の練習になる。',
+ kw:['判断','認知','アウトナンバー','パス回し','ゲーム形式','スペーシング','視野'], yt:''
+},
+{
+ id:'seed-s1', name:'フォームシューティング', cat:'シュート',
+ purpose:'正しいシュートフォームの定着',
+ grades:['中学','高校'], minP:1, maxP:30, time:10, court:'バスケット1つにつき2〜6人',
+ points:['ワンハンドで真上にリリースし、フォロースルーを残す','膝→体幹→指先へ力を連動させる','毎回同じリズム・同じ着地で打つ'],
+ mistakes:['距離を欲張ってフォームが崩れる','両手で押し出してしまう','着地位置がずれる（体が流れる）'],
+ desc:'リング下1〜2mから始め、入った感覚を確かめながら少しずつ距離を伸ばすフォーム固めの練習。1本ごとに「真上に跳んで同じ場所に着地できたか」を自分でチェックさせる。強度が低いので、練習の最初や最後のルーティンとして毎日短時間行うと効果が高い。',
+ kw:['シュートフォーム','基礎','初心者','低強度','フォロースルー','ルーティン','ウォームアップ'], yt:''
+},
+{
+ id:'seed-s2', name:'5スポット・キャッチ＆シュート', cat:'シュート',
+ purpose:'試合と同じスピードでのキャッチ＆シュート精度向上',
+ grades:['中学','高校'], minP:2, maxP:12, time:15, court:'半面',
+ points:['キャッチの前に足の準備を終える（ミートのリズム）','パサーは「打てる場所」へ正確に出す','打った本数ではなく成功数で管理する'],
+ mistakes:['キャッチしてから構え直して遅くなる','毎回ゆっくり同じスピードで打ってしまう','記録を取らずに流して打つ'],
+ desc:'両コーナー・両ウイング・トップの5スポットを移動しながらパスを受けてシュート。各スポット5本など成功数を記録し、ゲームスピードを保って行う。リバウンダーとパサーを固定してローテーションすると回転が良い。守備役がクローズアウトする発展形にすると「打つ／ドライブ」の判断要素を加えられる。',
+ kw:['キャッチアンドシュート','スポットシュート','記録','ゲームスピード','3ポイント','ミート'], yt:''
+},
+{
+ id:'seed-r1', name:'1on1ボックスアウト', cat:'リバウンド',
+ purpose:'ボックスアウトの姿勢と接触の習得',
+ grades:['中学','高校'], minP:2, maxP:20, time:10, court:'バスケット1つ',
+ points:['シュートが上がったら「まず人」、ボールはその後','前腕とお尻で相手を感じ続ける','低い姿勢で広い面を作る'],
+ mistakes:['ボールだけを見て相手を離してしまう','手で押し出して反則になる','接触を嫌がって横に並ぶだけになる'],
+ desc:'コーチ（または3人目）がシュートを打ち、ディフェンス役がオフェンス役をボックスアウトしてリバウンドを確保する1対1。「ボールが床に落ちる前に確保」などルールを決めて競争形式にする。攻守を交代して両方の動きを経験させ、「シューターチェック→接触→ボール」の順序を徹底する。',
+ kw:['ボックスアウト','スクリーンアウト','接触','姿勢','競争','リバウンド争い'], yt:''
+},
+{
+ id:'seed-r2', name:'トライアングル・リバウンド', cat:'リバウンド',
+ purpose:'落下点の予測・反応と、リバウンド争いの強度向上',
+ grades:['中学','高校'], minP:3, maxP:12, time:10, court:'バスケット1つ',
+ points:['落下点の予測を口に出させる','確保後はチンナップ（顎の高さでボールを守る）','取られた側の切り替えを速くする'],
+ mistakes:['ジャンプのタイミングが毎回同じ','確保後にボールを下げて奪われる','譲り合って誰も跳ばない'],
+ desc:'3人がリング周りに三角形で立ち、コーチがボードに当てたボールを競って確保する。取った選手は残り2人のプレッシャーに耐えながらその場でフィニッシュまで行う。「3本先取で勝ち抜け」など競争形式にすると強度が一気に上がる。',
+ kw:['競争','落下点','予測','高強度','フィジカル','チンナップ'], yt:''
+},
+{
+ id:'seed-df1', name:'スタンス＆スライド', cat:'ディフェンス',
+ purpose:'ディフェンスフットワークの基礎習得',
+ grades:['中学','高校'], minP:1, maxP:30, time:10, court:'半面〜全面',
+ points:['足を交差させない（クロスしない）','頭の高さを変えずに動く','ピストルスタンス（ボールとマークマンを同一視野に置く構え）を確認する'],
+ mistakes:['疲れると腰が高くなる','かかと重心になり反応が遅れる','腕が下がって面が小さくなる'],
+ desc:'ラインに沿ったサイドステップ、コーチの指示に反応する方向転換（前後左右）、クローズアウト→スライドの連続など、フットワークの基本をサーキットで行う。短い時間で集中して行い、姿勢が崩れたら一度止めてフォームを直す。ウォームアップに組み込んでも良い。',
+ kw:['フットワーク','スライド','スタンス','基礎','ウォームアップ','低強度','姿勢','ピストル'], yt:''
+},
+{
+ id:'seed-df2', name:'シェルディフェンス4on4', cat:'ディフェンス',
+ purpose:'ボール位置に応じたポジショニング（1パス・2パスアウェイ）の習得',
+ grades:['中学','高校'], minP:8, maxP:16, time:15, court:'半面',
+ points:['パスが飛ぶたびに全員が動く（ジャンプ・トゥ・ザ・ボール）','ボール・マークマン・バスケットの位置関係を常に保つ','「ボール」「ヘルプ」などの声を出し続ける'],
+ mistakes:['自分のマークマンしか見ていない','ボール移動後のポジション修正が遅れる','ヘルプ位置が深すぎて自分のマークに戻れない'],
+ desc:'オフェンス4人は外周でパス回し（最初は攻めない）、ディフェンス4人がパスのたびにポジションを修正するシェルドリル。慣れたらドライブ→ヘルプ→ローテーション、最後は制限付きライブ4on4へと段階を上げる。チームディフェンスの「共通言語」を作る土台になる練習。',
+ kw:['シェル','ポジショニング','ヘルプ','ローテーション','ピストル','チームディフェンス','4対4'], yt:''
+},
+{
+ id:'seed-t1', name:'2on1・3on2連続判断', cat:'トランジション',
+ purpose:'アウトナンバー時の判断（打ち切る・運ぶ・パス）を磨く',
+ grades:['中学','高校'], minP:6, maxP:15, time:15, court:'全面',
+ points:['オフェンスはまずリムへ向かい、守備を引きつける','パスは1本で仕留める意識（無駄なパスを増やさない）','守備は「1人目がボールを止め、2人目がパスコース」'],
+ mistakes:['外側に膨らんで守備の脅威にならない','守備を見ずに決め打ちでパスする','守備1人目が飛びついて簡単に抜かれる'],
+ desc:'2on1から3on2へ連続して攻防するウェーブ形式（攻めた選手がそのまま次の守備に回る）。アウトナンバーの判断基準「守備が自分に寄ったらパス、来なければ打ち切る」を高速で繰り返し経験させる。回転が速く、運動量も同時に確保できる。',
+ kw:['速攻','アウトナンバー','判断','認知','2対1','3対2','ウェーブ','高強度','ファストブレイク'], yt:''
+},
+{
+ id:'seed-t2', name:'3メン速攻→バック2', cat:'トランジション',
+ purpose:'速攻のレーン取りと、攻→守の切り替えの習慣化',
+ grades:['中学','高校'], minP:6, maxP:18, time:15, court:'全面',
+ points:['リバウンド→アウトレットを最速で','3レーンを広く走る（ウイングはサイドライン沿い）','フィニッシュ後、決められた2人が即座に守備へ戻る'],
+ mistakes:['真ん中に集まりレーンが重なる','アウトレットパスが弱く遅い','戻る2人の判断が遅れて簡単に走られる'],
+ desc:'3人組で速攻を出し、フィニッシュ後に指定した2人がディフェンスに戻って、次の3人組の速攻を2人で守る連続ドリル。「攻めたら戻る」切り替えを仕組みとして習慣化できる。シュート成功時と失敗時で戻り方のルールを変えるなど、判断要素を追加して発展させられる。',
+ kw:['3メン','速攻','切り替え','トランジションディフェンス','走力','高強度','アウトレット'], yt:''
+},
+{
+ id:'seed-o1', name:'制限付きライブ1on1', cat:'1on1',
+ purpose:'制限の中で、状況に合ったプレーを選択する力を養う',
+ grades:['中学','高校'], minP:2, maxP:16, time:15, court:'バスケット1つ〜',
+ points:['「ドリブル3回以内」「5秒以内」などの制限で、考えてから仕掛ける状況を作る','仕掛ける前に相手との距離・重心を観察させる','終わったら「なぜその選択をしたか」を一言で言わせる'],
+ mistakes:['制限を忘れて無計画に突っ込む','最初の一歩が弱くプレッシャーを与えられない','守備の重心と逆を突けていない'],
+ desc:'ウイングやトップからのライブ1on1に「ドリブル3回まで」などの制限を設定する。制限があることで、仕掛ける前に守備を観察（認知）し、最適なプレーを選択する習慣がつく。守備側にも「サイドラインに追い込む」など方向づけのテーマを持たせて行う。',
+ kw:['1対1','判断','制限','駆け引き','ドライブ','方向づけ','選択','認知'], yt:''
+},
+{
+ id:'seed-o2', name:'クローズアウト1on1', cat:'1on1',
+ purpose:'試合で最も多いクローズアウト局面での攻防判断を鍛える',
+ grades:['中学','高校'], minP:2, maxP:16, time:15, court:'バスケット1つ〜',
+ points:['守備は最後の2歩を細かく刻み、片手を上げて寄る','オフェンスは守備の勢い・距離を見て「打つ・抜く」を判断','抜くときは守備が寄ってきた方向の逆へ'],
+ mistakes:['守備が全力で突っ込み一発で抜かれる','オフェンスが守備を見ずに決め打ちする','キャッチ前に判断材料（守備との距離）を見ていない'],
+ desc:'守備役がリング下からパスを出し、クローズアウトした瞬間から1on1を開始する。オフェンスは守備の寄り方（速い・遅い、距離）を見てシュート・ドライブ・フェイクを選択する。試合で最も多く発生する局面のひとつで、認知→判断→選択→実行のサイクルを短時間に凝縮できる。',
+ kw:['クローズアウト','判断','認知','キャッチアンドシュート','ドライブ','駆け引き'], yt:''
+},
+{
+ id:'seed-w1', name:'2on2パス＆カット', cat:'2on2',
+ purpose:'「パスの後に動く」原則と、その判断を身につける',
+ grades:['中学','高校'], minP:4, maxP:16, time:15, court:'半面',
+ points:['パスしたら必ず動く（カット or スペース空け）','カットはまずリムへまっすぐ','受け手はカッターを見てから次のプレーを判断する'],
+ mistakes:['パスして突っ立ってしまう','カットが弧を描いて遅い','2人の距離が近すぎてお互いを消し合う'],
+ desc:'スクリーンなし・パス＆カットのみで攻める2対2。「パスしたら動く」原則を体に染み込ませる練習。守備がカットに付いてきたら外へ広がる、付いてこなければそのままもらってフィニッシュ、という判断を言語化しながら進める。慣れたら制限を緩めてライブへ移行する。',
+ kw:['パスアンドカット','ギブアンドゴー','オフボール','動き','判断','スペーシング'], yt:''
+},
+{
+ id:'seed-w2', name:'2on2ボールスクリーン基礎', cat:'2on2',
+ purpose:'ピック＆ロールの基本的な使い方と、守備対応に応じた判断',
+ grades:['高校','中学'], minP:4, maxP:16, time:20, court:'半面',
+ points:['スクリーンは止まってからしっかり当てる','ユーザーは肩が触れる距離でタイトに使う','スクリナーは守備を見てロール／ポップを選択する'],
+ mistakes:['スクリーンに当てず離れたまま使う','ユーザーが急ぎすぎて守備の対応を見ない','スクリナーが毎回同じ動きしかしない'],
+ desc:'ウイングまたはトップでのボールスクリーンから始める2対2。守備の対応（ファイトオーバー・アンダー・スイッチ）に応じて、プルアップ・ドライブ・ロールへのパスなどを選択する。最初は守備の対応を固定して「この守備にはこの選択」を整理し、徐々にライブへ移行する。',
+ kw:['ピックアンドロール','スクリーン','合わせ','判断','ロール','ポップ','PnR'], yt:''
+},
+{
+ id:'seed-h1', name:'3on3スペーシングゲーム', cat:'3on3',
+ purpose:'適切な距離感（スペーシング）を保ちながら攻める習慣づけ',
+ grades:['中学','高校'], minP:6, maxP:18, time:20, court:'半面',
+ points:['常に4〜5mの距離を保つ','ドライブがペイントに入ったら周りは合わせの動き（リフト／ドリフト）','ボールマンが困ったら近づくのではなく広がる'],
+ mistakes:['ボールに寄って密集してしまう','合わせの動きが止まって見ている','コーナーを使わない'],
+ desc:'3対3のライブに「ドリブル5回まで」「ペイントアタック後のキックアウトはOK」などスペーシングを意識させるルールを設定する。攻撃側は三角形の距離感を保ち、ドライブへの合わせを判断する。守備側のヘルプ判断の練習にもなる、実戦に最も近い少人数ゲーム。',
+ kw:['スペーシング','合わせ','3対3','ゲーム形式','ドライブ','キックアウト','判断'], yt:''
+},
+{
+ id:'seed-h2', name:'3on3連続トランジション', cat:'3on3',
+ purpose:'攻防の切り替えと判断を、ゲームの流れの中で鍛える',
+ grades:['中学','高校'], minP:9, maxP:18, time:20, court:'全面',
+ points:['得点・リバウンド後の最初の3歩を全力で','先頭の選手がレーンを宣言する声を出す','疲れたときほど顔を上げる（認知）ことを要求する'],
+ mistakes:['切り替えの一歩目が遅い','全員がボールに寄ってレーンが消える','疲れると判断を放棄して突っ込む'],
+ desc:'3チーム以上で行うウェーブ式の3対3。攻撃が終わったチームがそのまま守備に切り替わり、待っているチームが次々と攻め込む。常にアウトナンバー気味の状況が生まれ、トランジションの判断と体力を同時に強化できる。時間制またはスコア制で競争にする。',
+ kw:['トランジション','切り替え','ウェーブ','高強度','体力','速攻','ゲーム形式'], yt:''
+},
+{
+ id:'seed-to1', name:'5アウト・パス＆カット', cat:'チームオフェンス',
+ purpose:'モーションオフェンスの土台となる「動きの原則」をチームで共有する',
+ grades:['中学','高校'], minP:5, maxP:15, time:20, court:'半面',
+ points:['パスしたらバスケットカット→空いたスペースへ補充','全員が原則（パス→カット→補充）を口で説明できる状態にする','ドリブルは「目的があるとき」だけ使う'],
+ mistakes:['カット後の補充が遅れて形が崩れる','特定の選手だけが動いてしまう','原則を覚える前にライブにして混乱する'],
+ desc:'5人が外周に広がる5アウト配置から、パス＆カットと補充だけで攻めるモーションオフェンスの導入練習。最初は守備なしで動きの原則を確認し、ダミー守備→制限ライブ→完全ライブと段階を上げる。誰が出ても同じ原則で攻められる「チームの共通言語」を作る。',
+ kw:['モーションオフェンス','5アウト','パスアンドカット','原則','オフェンスシステム','スペーシング'], yt:''
+},
+{
+ id:'seed-to2', name:'ゾーンアタック基礎', cat:'チームオフェンス',
+ purpose:'ゾーンディフェンス攻略の原則を理解し、実行できるようにする',
+ grades:['中学','高校'], minP:5, maxP:15, time:20, court:'半面',
+ points:['ギャップ（守備2人の間）へドライブして2人を引きつける','ハイポスト・ショートコーナーを経由して守備を縦に割る','守備のスライドより速くボールを動かす'],
+ mistakes:['外周でボールを回すだけで中を攻めない','ゾーンの正面に立ってしまう（ギャップに立たない）','パスが遅く、守備が整い続ける'],
+ desc:'2-3ゾーンを想定し、ギャップアタック、ハイポストへのエントリー、ショートコーナーの活用、逆サイドへのスイングといったゾーン攻略の原則をひとつずつ確認する。守備は最初ゆっくりスライドさせ、攻撃の狙いが見えてきたらライブへ。ゾーン対策の核になる練習。',
+ kw:['ゾーンアタック','ゾーン対策','ギャップ','ハイポスト','ショートコーナー','ボールムーブ','2-3ゾーン'], yt:''
+},
+{
+ id:'seed-td1', name:'5on5シェル発展（M2M）', cat:'チームディフェンス',
+ purpose:'チーム全体でのヘルプ＆ローテーションの約束事を揃える',
+ grades:['中学','高校'], minP:10, maxP:15, time:20, court:'半面',
+ points:['ボールサイドは強く、ヘルプサイドは絞る','ドライブに対して「誰が止め、誰が埋めるか」を共有する','「ヘルプ」「ローテ」「シュート」など全員の声でつながる'],
+ mistakes:['ヘルプに出た後のローテーションが止まる','ヘルプサイドが自分のマークに張り付いて絞れない','声が出ず、1対1が5つ並んだだけになる'],
+ desc:'シェルディフェンスを5人に拡張し、コーチが指定する状況（ウイングからのドライブ、ポストエントリーなど）に対するヘルプ＆ローテーションを確認する。「オフェンスはドライブのみ」などの制限ライブから完全ライブへ段階を上げる。マンツーマンディフェンスの約束事をチームで揃える練習。',
+ kw:['マンツーマン','ヘルプ','ローテーション','シェル','5対5','チームディフェンス','コミュニケーション'], yt:''
+},
+{
+ id:'seed-td2', name:'2-3ゾーンの基礎理解', cat:'チームディフェンス',
+ purpose:'ゾーンディフェンスの仕組みと、各ポジションの役割を理解する',
+ grades:['中学','高校'], minP:10, maxP:15, time:20, court:'半面',
+ points:['ボールの位置に合わせて5人全員が動く（ゾーンは止まる守備ではない）','自分のエリア内の優先順位（ボール→人）を理解する','ローテーションの声を必ず出す'],
+ mistakes:['エリアの境目で譲り合って誰も出ない','ボールウォッチでカッターを見失う','足が止まり、手だけで守ろうとする'],
+ desc:'2-3ゾーンの基本配置と、ボール位置ごとのスライドを「歩き→ジョグ→ライブ」と段階的に確認する。攻撃側にギャップやハイポストを意図的に突かせ、どうカバーするかをチームで共有する。自チームの武器としてだけでなく、ゾーンを攻める理解（ゾーンアタック）にも直結する。',
+ kw:['ゾーンディフェンス','2-3ゾーン','スライド','役割','エリア','チームディフェンス'], yt:''
+},
+{
+ id:'seed-f1', name:'ドリブル・コンディショニング', cat:'体力向上',
+ purpose:'ボールを扱いながら有酸素能力を高める（体力に自信がない選手も段階的に取り組める）',
+ grades:['中学','高校'], minP:1, maxP:30, time:15, court:'全面（半面でも可）',
+ points:['フォームが崩れないペースから始める','「会話できる強度」→「ややきつい」へ段階的に上げる','休息も計画に入れ、質が落ちたまま続けない'],
+ mistakes:['最初から全力で行い、後半フォームが崩壊する','ボールなしの走り込みだけで飽きさせてしまう','休息なしで続けて動きの質が落ちる'],
+ desc:'フルコートのドリブル往復に、スピード変化（ジョグ→トップスピード）、チェンジの指定、ストップ＆ゴーを組み合わせたコンディショニング。ボールを扱いながら走るため技術練習を兼ねられ、体力のない選手も自分のペースで段階的に負荷を上げられる。「30秒走＋30秒休息」などインターバル形式で管理する。',
+ kw:['体力','持久力','スタミナ','コンディショニング','低強度','段階的','初心者','有酸素','走力'], yt:''
+},
+{
+ id:'seed-f2', name:'17本ライン走（17s）', cat:'体力向上',
+ purpose:'試合終盤を想定した無酸素系の走力強化',
+ grades:['高校','中学'], minP:1, maxP:30, time:10, court:'全面',
+ points:['制限タイムを設定して質を担保する（流して走らせない）','本数・タイムは学年と時期で調整する','「第4Qに足を残すため」という目的を伝えてから行う'],
+ mistakes:['ラインを踏まずに折り返す','ペース配分をして全力を出さない','罰走として使い、走ることへの意欲を下げる'],
+ desc:'サイドライン間を制限時間内に17往復するシャトル系トレーニング。中学生や体力に不安がある段階では本数を10〜12本に減らす、制限時間を緩めるなどして調整する。回復時間を挟んで2〜3セット。数値が見えるため、チームの体力基準づくりにも使える。',
+ kw:['走力','シャトルラン','高強度','無酸素','終盤','フィジカル','17本'], yt:''
+},
+{
+ id:'seed-g1', name:'テーマ付きスクリメージ', cat:'チームオフェンス',
+ purpose:'その日の練習テーマを、試合形式の中で実行に移す',
+ grades:['中学','高校'], minP:6, maxP:20, time:25, court:'全面（人数により半面）',
+ points:['テーマを明確にする（例：速攻を3本出す、ペイントタッチ後のシュートのみ得点2倍）','笛を吹きすぎず、切れ目でまとめて指導する','スコアと条件で競争性を保つ'],
+ mistakes:['テーマがなく「ただのゲーム」になる','止めすぎて流れと運動量が落ちる','控え選手の出場時間が偏る'],
+ desc:'その日の練習テーマに沿った条件付きの5対5（人数によって4対4・3対3）。「速攻からの得点は2倍」「ゾーン限定」などのルールで狙いを強調し、練習で身につけたことを試合の文脈で発揮させる。練習の締めに置き、認知→判断→選択→実行が試合スピードで回るかを確認する場にする。',
+ kw:['ゲーム形式','スクリメージ','5対5','実戦','テーマ','条件付きゲーム','締め'], yt:''
+}
+];
+
+/* ============================================================
+   初期データ：原則（10件）
+   ============================================================ */
+const SEED_PRINCIPLES = [
+{
+ id:'pr-1', title:'認知→判断→選択→実行のプレーモデル', cat:'チームオフェンス',
+ body:'すべてのプレーは「①状況を見る（認知）→②意味づけする（判断）→③プレーを選ぶ（選択）→④やり切る（実行）」の流れで成り立つ。ミスが起きたら、どの段階でつまずいたかを切り分けて指導する（見えていなかったのか／見えたが判断を誤ったのか／選択は正しいが技術不足で実行できなかったのか）。練習メニューには可能な限り、守備を見る・合図に反応するなど認知と判断の要素を組み込む。',
+ kw:['認知','判断','選択','実行','プレーモデル','指導','コーチング']
+},
+{
+ id:'pr-2', title:'スペーシングの原則', cat:'チームオフェンス',
+ body:'攻撃時は味方同士4〜5m（約12〜15フィート）の距離を保つ。近すぎると1人の守備に2人が守られ、遠すぎるとパスが通らない。「困ったら広がる」「ドライブが入ったら止まらず合わせて動く（リフト・ドリフト）」をチームの共通理解にする。',
+ kw:['スペーシング','距離','合わせ','オフェンス原則','リフト','ドリフト']
+},
+{
+ id:'pr-3', title:'パスの後の原則', cat:'チームオフェンス',
+ body:'パスをしたら必ず次のアクション（バスケットカット、スクリーン、スペースを空ける）を起こす。「パスして見る」が攻撃停滞の最大の原因。カットは弧を描かずまずリムへまっすぐ向かい、守備の反応を見て次を判断する。',
+ kw:['パスアンドカット','ギブアンドゴー','オフボール','カット']
+},
+{
+ id:'pr-4', title:'ディフェンスの位置の原則（ボール・マン・バスケット）', cat:'チームディフェンス',
+ body:'常にボール・マークマン・バスケットの3点を意識した位置を取る。ワンパスアウェイはディナイまたはギャップ、ツーパスアウェイはヘルプポジション。ピストルスタンス（両手でボールと自分のマークを同時に指せる構え）で、どちらも視野に入れ続ける。',
+ kw:['ポジショニング','ピストル','ディナイ','ヘルプポジション','守備原則']
+},
+{
+ id:'pr-5', title:'ヘルプ＆ローテーションの原則', cat:'チームディフェンス',
+ body:'ドライブを最終的に止めるのは抜かれた本人ではなくヘルプ。ヘルプが出たら、空いたマークを残りの全員でローテーションして埋める。「1人がヘルプ、全員がローテーション」。声（ヘルプ・ローテ・シュート）でつながることが前提になる。',
+ kw:['ヘルプ','ローテーション','カバー','声','チームディフェンス']
+},
+{
+ id:'pr-6', title:'クローズアウトの原則', cat:'ディフェンス',
+ body:'シューターへ寄るときは、最後の2〜3歩を細かいステップで減速し、片手を上げてシュートに圧力をかけ、もう抜かれない距離（腕1本分）で止まる。全力で寄り切ると一発で抜かれる。「シュートは触る、ドライブは抜かせない」のバランスを取る。',
+ kw:['クローズアウト','寄り','チョップステップ','守備']
+},
+{
+ id:'pr-7', title:'トランジションの優先順位', cat:'トランジション',
+ body:'守→攻：①セーフティの確保 ②リムラン（先頭はまずリングへ）③サイドレーンを広く走る。攻→守：①ボールへのプレッシャー ②ゴール下の保護 ③マークの確認。どちらも「最初の3歩」の速さがすべてを決める。',
+ kw:['速攻','切り替え','レーン','セーフティ','リムラン']
+},
+{
+ id:'pr-8', title:'リバウンドの原則', cat:'リバウンド',
+ body:'シュートが上がったら「①シューターチェック ②接触（ボックスアウト）③ボール確保」の順で行う。ボールから見るとマークを離してしまう。5人全員が誰かに触れていることをチームの基準にする。確保後はチンナップで奪われない。',
+ kw:['ボックスアウト','シューターチェック','接触','チンナップ']
+},
+{
+ id:'pr-9', title:'ペイントアタック＆キックアウト', cat:'チームオフェンス',
+ body:'良いシュートの多くは「ペイントタッチ」から生まれる。ドライブやポストプレーでペイントに侵入し、守備が収縮したら外へキックアウトする。外→中→外のボールの流れを作ることが、ノーマークを生む最短ルート。',
+ kw:['ペイントタッチ','ドライブ','キックアウト','ゾーン対策','収縮']
+},
+{
+ id:'pr-10', title:'アウトナンバーの判断基準', cat:'トランジション',
+ body:'2on1は「守備が自分に来たらパス、来なければレイアップまで打ち切る」。3on2は「まず真ん中がリムへ向かい、1人目の守備を引きつけてから判断する」。迷ったらリムアタック。パスの本数を増やすことが目的ではなく、守備を動かして確率の高いシュートを取ることが目的。',
+ kw:['アウトナンバー','2対1','3対2','判断','速攻']
+}
+];
+
+/* ============================================================
+   ユーティリティ
+   ============================================================ */
+const $  = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
+
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const norm = s => String(s || '').normalize('NFKC').toLowerCase();
+
+function uid(p){ return p + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function ytId(url){
+  const m = String(url || '').match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/);
+  return m ? m[1] : '';
+}
+
+let _toastTimer = null;
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('on'), 2300);
+}
+
+/* ============================================================
+   ストア（localStorage + 初期データ + data.json）
+   ============================================================ */
+const LS = {
+  menus  : 'drilliq_menus',
+  prin   : 'drilliq_principles',
+  seedv  : 'drilliq_seedv',
+  remotev: 'drilliq_remotev',
+  bm     : 'drilliq_bookmarks',
+  pass   : 'drilliq_pass'
+};
+
+const Store = {
+  menus: [], principles: [], bookmarks: new Set(),
+
+  upsert(base, incoming){
+    const map = new Map((base || []).map(x => [x.id, x]));
+    (incoming || []).forEach(x => { if (x && x.id) map.set(x.id, x); });
+    return Array.from(map.values());
+  },
+
+  load(){
+    let m = null, p = null;
+    try { m = JSON.parse(localStorage.getItem(LS.menus) || 'null'); } catch (e) {}
+    try { p = JSON.parse(localStorage.getItem(LS.prin)  || 'null'); } catch (e) {}
+    this.menus      = Array.isArray(m) ? m : null;
+    this.principles = Array.isArray(p) ? p : null;
+
+    const sv = +(localStorage.getItem(LS.seedv) || 0);
+    if (!this.menus || !this.principles || sv < SEED_VERSION){
+      this.menus      = this.upsert(this.menus      || [], SEED_MENUS);
+      this.principles = this.upsert(this.principles || [], SEED_PRINCIPLES);
+      localStorage.setItem(LS.seedv, String(SEED_VERSION));
+      this.save();
+    }
+    try { this.bookmarks = new Set(JSON.parse(localStorage.getItem(LS.bm) || '[]')); }
+    catch (e) { this.bookmarks = new Set(); }
+  },
+
+  save(){
+    try {
+      localStorage.setItem(LS.menus, JSON.stringify(this.menus));
+      localStorage.setItem(LS.prin,  JSON.stringify(this.principles));
+    } catch (e) { toast('保存に失敗しました（容量不足の可能性）'); }
+  },
+
+  saveBM(){ localStorage.setItem(LS.bm, JSON.stringify(Array.from(this.bookmarks))); },
+
+  /* data.json（リポジトリ直置き）からの全端末更新 */
+  applyRemote(remote){
+    if (!remote || typeof remote.version !== 'number') return false;
+    const cur = +(localStorage.getItem(LS.remotev) || 0);
+    if (remote.version <= cur) return false;
+    if (Array.isArray(remote.menus))      this.menus      = this.upsert(this.menus, remote.menus);
+    if (Array.isArray(remote.principles)) this.principles = this.upsert(this.principles, remote.principles);
+    localStorage.setItem(LS.remotev, String(remote.version));
+    this.save();
+    return true;
+  },
+
+  menu(id){ return this.menus.find(x => x.id === id); },
+  principle(id){ return this.principles.find(x => x.id === id); },
+  pass(){ return localStorage.getItem(LS.pass) || DEFAULT_PASS; }
+};
+
+/* ============================================================
+   画面切替
+   ============================================================ */
+function switchTab(name){
+  $$('.view').forEach(v => v.classList.toggle('on', v.dataset.view === name));
+  $$('.tabbar button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  window.scrollTo(0, 0);
+  if (name === 'book')  renderBook();
+  if (name === 'admin') renderAdmin();
+}
+
+/* ============================================================
+   共通レンダリング部品
+   ============================================================ */
+function catChip(cat){
+  const c = CAT_COLORS[cat] || '#94A3B8';
+  return '<span class="catchip" style="color:' + c + ';background:' + c + '1f;border:1px solid ' + c + '4d">' + esc(cat) + '</span>';
+}
+
+function timeBadge(min){
+  return '<span class="tbadge">' + (+min || 0) + '<small>分</small></span>';
+}
+
+function peopleLabel(m){
+  const a = +m.minP || 1, b = +m.maxP || 0;
+  if (!b || b >= 30) return a + '人〜';
+  if (a === b) return a + '人';
+  return a + '〜' + b + '人';
+}
+
+function gradeLabel(m){
+  const g = m.grades || [];
+  if (g.length >= 2) return '中学・高校';
+  return g[0] || '—';
+}
+
+function ytHTML(m){
+  const id = ytId(m.yt);
+  if (!id) return '<div class="yt-none">参考動画は未登録です（管理画面からYouTube URLを追加できます）</div>';
+  return '<a class="yt" href="' + esc(m.yt) + '" target="_blank" rel="noopener">'
+       +   '<img src="https://img.youtube.com/vi/' + id + '/mqdefault.jpg" alt="参考動画" loading="lazy">'
+       +   '<div><div class="yt-t">YouTubeで動画を見る ▶</div><div class="yt-s">' + esc(m.yt) + '</div></div>'
+       + '</a>';
+}
+
+function liList(arr){
+  return '<ul>' + (arr || []).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
+}
+
+/* AI回答フォーマット（練習名→目的→必要人数→所要時間→実施方法→指導ポイント→注意点→参考動画） */
+function resultCard(m, num, opts){
+  opts = opts || {};
+  const bmOn = Store.bookmarks.has(m.id);
+  let h = '<div class="result" data-mid="' + esc(m.id) + '">';
+
+  h += '<div class="r-head">';
+  if (num) h += '<div class="num">' + num + '</div>';
+  h += '<div class="ttl">'
+     +   '<div class="name">' + esc(m.name) + '</div>'
+     +   '<div class="meta">' + catChip(m.cat) + timeBadge(m.time)
+     +     '<span class="tbadge">' + esc(peopleLabel(m)) + '</span>'
+     +     '<span class="tbadge">' + esc(gradeLabel(m)) + '</span>'
+     +   '</div>'
+     + '</div></div>';
+
+  h += '<div class="r-body">';
+  h += 'X';
+  h += '<div class="kv">'
+     +   '<div class="k"><div class="kl">必要人数</div><div class="kvv">' + esc(peopleLabel(m)) + '</div></div>'
+     +   '<div class="k"><div class="kl">所要時間</div><div class="kvv">' + (+m.time || 0) + '分</div></div>'
+     +   '<div class="k"><div class="kl">コート</div><div class="kvv" style="font-size:11.5px;line-height:1.4">' + esc(m.court || '—') + '</div></div>'
+     + '</div>';
+  h += '<div class="sec"><div class="s-lbl">実施方法</div><p>' + esc(m.desc) + '</p></div>';
+  if ((m.points || []).length)
+    h += '<div class="sec"><div class="s-lbl">指導ポイント</div>' + liList(m.points) + '</div>';
+  if ((m.mistakes || []).length)
+    h += '<div class="sec warn"><div class="s-lbl">注意点（よくあるミス）</div>' + liList(m.mistakes) + '</div>';
+  h += '<div class="sec"><div class="s-lbl">参考動画</div>' + ytHTML(m) + '</div>';
+  h += '</div>';
+
+  if (!opts.noFoot){
+    h += '<div class="r-foot">'
+       +   '<button class="btn btn-ghost btn-sm" data-act="bm" data-id="' + esc(m.id) + '">'
+       +     '<span class="star' + (bmOn ? ' on' : '') + '">★</span>&nbsp;' + (bmOn ? 'ブックマーク済み' : 'ブックマーク')
+       +   '</button>'
+       + '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function principleCard(p){
+  return '<div class="principle" data-act="open-prin" data-id="' + esc(p.id) + '">'
+       +   '<div class="p-ttl">' + esc(p.title) + '</div>'
+       +   '<div class="p-body">' + esc(p.body) + '</div>'
+       +   '<div style="margin-top:8px">' + catChip(p.cat) + '</div>'
+       + '</div>';
+}
+
+/* ============================================================
+   モーダル
+   ============================================================ */
+function openModal(title, bodyHTML){
+  $('#modal-title').textContent = title;
+  $('#modal-body').innerHTML = bodyHTML;
+  $('#modal').classList.add('on');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal(){
+  $('#modal').classList.remove('on');
+  $('#modal-body').innerHTML = '';
+  document.body.style.overflow = '';
+}
+function openMenuModal(id){
+  const m = Store.menu(id);
+  if (!m) return;
+  openModal('練習メニュー', resultCard(m, 0));
+}
+function openPrinModal(id){
+  const p = Store.principle(id);
+  if (!p) return;
+  openModal('原則', '<div class="principle" style="margin:0"><div class="p-ttl">' + esc(p.title) + '</div>'
+    + '<div class="p-body">' + esc(p.body) + '</div>'
+    + '<div style="margin-top:10px">' + catChip(p.cat) + '</div></div>');
+}
+
+/* ============================================================
+   ブックマーク
+   ============================================================ */
+function toggleBM(id){
+  if (Store.bookmarks.has(id)){ Store.bookmarks.delete(id); toast('ブックマークを外しました'); }
+  else { Store.bookmarks.add(id); toast('ブックマークしました ★'); }
+  Store.saveBM();
+  /* 表示中のボタン・星を更新 */
+  $$('[data-act="bm"][data-id="' + id + '"]').forEach(btn => {
+    const on = Store.bookmarks.has(id);
+    const star = btn.querySelector('.star');
+    if (star) star.classList.toggle('on', on);
+    if (btn.classList.contains('btn'))
+      btn.innerHTML = '<span class="star' + (on ? ' on' : '') + '">★</span>&nbsp;' + (on ? 'ブックマーク済み' : 'ブックマーク');
+  });
+  const bookView = $('.view[data-view="book"]');
+  if (bookView && bookView.classList.contains('on') && BOOK.mode === 'bookmarks') renderBook();
+}
+
+/* ============================================================
+   検索エンジン（クライアントサイド・スコアリング方式）
+   ・類義語辞書 / 条件抽出（人数・時間・学年・強度）/ バイグラム照合
+   ============================================================ */
+function bigrams(s){
+  const t = norm(s).replace(/[^ぁ-んァ-ヶー一-龠a-z0-9]/g, '');
+  const out = new Set();
+  for (let i = 0; i < t.length - 1; i++) out.add(t.slice(i, i + 2));
+  return out;
+}
+
+const STOP_SORTED = STOP.slice().sort((a, b) => b.length - a.length);
+
+function buildIntent(qRaw){
+  const q = norm(qRaw);
+  const it = { people: null, time: null, grade: null, low: false, high: false, cats: [], kws: [], terms: [] };
+
+  let m = q.match(/(\d+)\s*(人|名)/);          if (m) it.people = +m[1];
+  m = q.match(/(\d+)\s*分/);                    if (m) it.time = +m[1];
+  m = q.match(/(\d+(?:\.\d+)?)\s*時間/);        if (m && !it.time) it.time = Math.round(+m[1] * 60);
+
+  if (/中学|ミニバス/.test(q)) it.grade = '中学';
+  else if (/高校/.test(q))     it.grade = '高校';
+
+  it.low  = LOW_WORDS.some(w => q.includes(norm(w)));
+  it.high = HIGH_WORDS.some(w => q.includes(norm(w)));
+
+  const cats = new Set(), kws = new Set();
+  SYN.forEach(g => {
+    if (g.words.some(w => q.includes(norm(w)))){
+      (g.cats || []).forEach(c => cats.add(c));
+      (g.kws  || []).forEach(k => kws.add(k));
+    }
+  });
+  it.cats = Array.from(cats);
+  it.kws  = Array.from(kws);
+
+  /* 残り語（ストップワード除去 → 2文字以上の断片） */
+  let resid = ' ' + q + ' ';
+  resid = resid.replace(/\d+\s*(人|名|分|時間)/g, ' ');
+  STOP_SORTED.forEach(w => { resid = resid.split(w).join(' '); });
+  it.terms = resid.split(/[^ぁ-んァ-ヶー一-龠a-z0-9]+/).filter(t => t.length >= 2).slice(0, 8);
+  return it;
+}
+
+const LOWK  = ['低強度', '基礎', '初心者', 'ウォームアップ', 'アップ'];
+const HIGHK = ['高強度', '走り込み', '無酸素', 'シャトルラン'];
+
+function scoreMenu(m, it, qBi){
+  let s = 0;
+  const kwN   = (m.kw || []).map(norm);
+  const nameN = norm(m.name);
+  const purN  = norm(m.purpose || '');
+  const descN = norm(m.desc || '');
+
+  /* 類義語キーワード一致 */
+  it.kws.forEach(k => {
+    const kn = norm(k);
+    if (kwN.some(x => x.includes(kn) || kn.includes(x)) || nameN.includes(kn) || purN.includes(kn)) s += 12;
+  });
+
+  /* カテゴリ一致 */
+  if (it.cats.includes(m.cat)) s += 8;
+
+  /* 残り語の一致 */
+  it.terms.forEach(t => {
+    if (nameN.includes(t)) s += 10;
+    else if (kwN.some(x => x.includes(t))) s += 12;
+    else if (purN.includes(t)) s += 6;
+    else if (descN.includes(t)) s += 2;
+  });
+
+  /* バイグラム照合（表記ゆれの吸収・上限15） */
+  const docBi = bigrams(m.name + ' ' + (m.purpose || '') + ' ' + (m.kw || []).join(' '));
+  let b = 0; qBi.forEach(g => { if (docBi.has(g)) b++; });
+  s += Math.min(b, 15);
+
+  /* 条件フィット */
+  if (it.people){
+    if (m.minP <= it.people && it.people <= (+m.maxP || 99)) s += 6;
+    else if (m.minP > it.people) s -= 12;
+  }
+  if (it.time){
+    if ((+m.time || 0) <= it.time) s += 3; else s -= 4;
+  }
+  if (it.grade){
+    if ((m.grades || []).includes(it.grade)) s += 4; else s -= 8;
+  }
+  if (it.low){
+    if (kwN.some(x => LOWK.some(l => x.includes(norm(l)))))  s += 7;
+    if (kwN.some(x => HIGHK.some(h => x.includes(norm(h))))) s -= 9;
+  }
+  if (it.high){
+    if (kwN.some(x => HIGHK.some(h => x.includes(norm(h))))) s += 8;
+  }
+  return s;
+}
+
+function scorePrinciple(p, it, qBi){
+  let s = 0;
+  const kwN = (p.kw || []).map(norm);
+  const tN  = norm(p.title);
+  const bN  = norm(p.body || '');
+
+  it.kws.forEach(k => {
+    const kn = norm(k);
+    if (kwN.some(x => x.includes(kn) || kn.includes(x)) || tN.includes(kn)) s += 10;
+  });
+  if (it.cats.includes(p.cat)) s += 6;
+  it.terms.forEach(t => {
+    if (tN.includes(t)) s += 8;
+    else if (kwN.some(x => x.includes(t))) s += 8;
+    else if (bN.includes(t)) s += 3;
+  });
+  const docBi = bigrams(p.title + ' ' + (p.kw || []).join(' '));
+  let b = 0; qBi.forEach(g => { if (docBi.has(g)) b++; });
+  s += Math.min(b, 8);
+  return s;
+}
+
+/* ============================================================
+   検索の実行と表示
+   ============================================================ */
+function runSearch(qRaw){
+  const q = String(qRaw || '').trim();
+  if (!q){ toast('探したい内容を入力してください'); return; }
+  $('#q').value = q;
+  $('#q').blur();
+  $('#search-out').innerHTML =
+    '<div class="ai-status"><span class="dot"></span>登録されている練習データを分析しています…</div>';
+  setTimeout(() => renderSearch(q), 340);
+}
+
+function intentBox(it, count, fallback){
+  const chips = [];
+  if (it.grade)  chips.push('学年：' + it.grade);
+  if (it.people) chips.push('人数：' + it.people + '人');
+  if (it.time)   chips.push('時間：' + it.time + '分');
+  if (it.low)    chips.push('強度：ひかえめ');
+  if (it.high)   chips.push('強度：高め');
+  it.cats.forEach(c => chips.push('カテゴリ：' + c));
+  it.kws.slice(0, 4).forEach(k => chips.push('テーマ：' + k));
+
+  let msg;
+  if (count === 0)        msg = '条件に合う練習メニューが見つかりませんでした。';
+  else if (fallback)      msg = 'ぴったりの登録メニューが少なかったため、近い練習を' + count + '件提案します。';
+  else                    msg = '条件に合う練習メニューを' + count + '件提案します。';
+
+  return '<div class="intent">'
+       +   '<div class="it-lbl">AIの読み取り</div>'
+       +   '<div class="it-msg">' + esc(msg) + '</div>'
+       +   (chips.length ? '<div class="it-chips">' + chips.map(c => '<span>' + esc(c) + '</span>').join('') + '</div>' : '')
+       + '</div>';
+}
+
+function renderSearch(q){
+  const it  = buildIntent(q);
+  const qBi = bigrams(q);
+
+  const scored = Store.menus
+    .map(m => ({ m, s: scoreMenu(m, it, qBi) }))
+    .sort((a, b) => b.s - a.s);
+
+  const hits     = scored.filter(x => x.s >= 18).slice(0, 5);
+  const fallback = hits.length === 0;
+  const list     = fallback ? scored.filter(x => x.s > 0).slice(0, 3) : hits;
+
+  const prins = Store.principles
+    .map(p => ({ p, s: scorePrinciple(p, it, qBi) }))
+    .filter(x => x.s >= 10)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, 2);
+
+  let h = intentBox(it, list.length, fallback);
+
+  if (!list.length){
+    h += '<div class="empty">'
+       +   '<div class="e-ic">🏀</div>'
+       +   '<div class="e-t">見つかりませんでした</div>'
+       +   '<div class="e-d">言い方を変えるか（例：「速攻」「ゾーン対策」「2人 基礎」）、<br>管理画面から練習メニューを追加してください。</div>'
+       + '</div>';
+  } else {
+    h += list.map((x, i) => resultCard(x.m, i + 1)).join('');
+  }
+
+  if (prins.length){
+    h += '<div class="relsec">'
+       +   '<div class="h-eyebrow">PRINCIPLE</div>'
+       +   '<div class="h-title" style="font-size:16px">あわせて押さえたい原則</div>'
+       +   prins.map(x => principleCard(x.p)).join('')
+       + '</div>';
+  }
+
+  $('#search-out').innerHTML = h;
+}
+
+/* ============================================================
+   検索の入力例
+   ============================================================ */
+const EXAMPLES = [
+  '体力のない中学生向けの練習',
+  '10人でできるシュート練習',
+  '速攻の判断力を鍛えたい',
+  'ゾーンディフェンス対策をしたい',
+  '2人でできる基礎練習',
+  'リバウンドを強くしたい'
+];
+
+/* ============================================================
+   練習プラン生成
+   ============================================================ */
+const PLAN_TIMES = [60, 90, 120, 150, 180];
+const CIRC = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
+let PLAN = null;
+
+const round5 = n => Math.max(5, Math.round(n / 5) * 5);
+const kwHas  = (m, words) => (m.kw || []).some(k => words.some(w => norm(k).includes(norm(w))));
+
+function rankCands(pool, pred, grade, target){
+  return pool.filter(pred)
+    .map(m => {
+      let s = 0;
+      if ((m.grades || []).includes(grade)) s += 4;
+      s -= Math.abs((+m.time || 0) - target) / 5;
+      s += Math.random() * 0.6;
+      return { m, s };
+    })
+    .sort((a, b) => b.s - a.s)
+    .map(x => x.m.id);
+}
+
+function firstNonEmpty(){
+  for (let i = 0; i < arguments.length; i++)
+    if (arguments[i] && arguments[i].length) return arguments[i];
+  return [];
+}
+
+function generatePlan(grade, people, total, focus){
+  const pool = Store.menus.filter(m => (+m.minP || 1) <= people);
+  const blocks = [];
+  const used = new Set();
+
+  function add(label, mins, cands){
+    const free = cands.filter(id => !used.has(id));
+    const list = (free.length ? free : cands).slice(0, 6);
+    if (list[0]) used.add(list[0]);
+    blocks.push({ label, mins, cands: list, idx: 0 });
+  }
+
+  const hasFund = total >= 75;
+  const hasSS   = total >= 60 && people >= 4;
+
+  let warm = Math.min(15, round5(total * 0.12));
+  let fund = hasFund ? round5(total * 0.13) : 0;
+  let ss   = hasSS   ? round5(total * 0.17) : 0;
+  let game = Math.max(15, round5(total * 0.22));
+  let focusTotal = total - warm - fund - ss - game;
+
+  /* ウォームアップ */
+  add('ウォームアップ', warm, firstNonEmpty(
+    rankCands(pool, m => kwHas(m, ['ウォームアップ', 'アップ', '低強度']), grade, warm),
+    rankCands(pool, m => ['ドリブル', 'パス'].includes(m.cat), grade, warm)
+  ));
+
+  /* 基礎ファンダメンタル（75分以上） */
+  if (fund){
+    const fcats = ['ドリブル', 'パス', 'シュート'].filter(c => !focus.includes(c));
+    add('基礎ファンダメンタル', fund, firstNonEmpty(
+      rankCands(pool, m => fcats.includes(m.cat), grade, fund),
+      rankCands(pool, m => ['ドリブル', 'パス', 'シュート'].includes(m.cat), grade, fund)
+    ));
+  }
+
+  /* 強化テーマ */
+  const per = Math.max(10, round5(focusTotal / focus.length));
+  focus.forEach((c, i) => {
+    const mins = (i === focus.length - 1)
+      ? Math.max(10, focusTotal - per * (focus.length - 1))
+      : per;
+    add('強化テーマ：' + c, mins, rankCands(pool, m => m.cat === c, grade, mins));
+  });
+
+  /* 対人スキル（60分以上・4人以上） */
+  if (ss){
+    add('対人スキル', ss, firstNonEmpty(
+      rankCands(pool, m => ['1on1', '2on2', '3on3'].includes(m.cat) && !focus.includes(m.cat), grade, ss),
+      rankCands(pool, m => ['1on1', '2on2', '3on3'].includes(m.cat), grade, ss)
+    ));
+  }
+
+  /* ゲーム形式 */
+  add('ゲーム形式', game, firstNonEmpty(
+    rankCands(pool, m => kwHas(m, ['ゲーム形式', 'スクリメージ']), grade, game),
+    rankCands(pool, m => ['チームオフェンス', 'チームディフェンス', '3on3'].includes(m.cat) && (+m.time || 0) >= 20, grade, game)
+  ));
+
+  /* 合計を一致させる（最大ブロックで吸収） */
+  let diff = total - blocks.reduce((a, b) => a + b.mins, 0);
+  if (diff !== 0){
+    const sorted = blocks.slice().sort((a, b) => b.mins - a.mins);
+    for (const b of sorted){
+      if (!diff) break;
+      const next = Math.max(5, b.mins + diff);
+      diff -= (next - b.mins);
+      b.mins = next;
+    }
+  }
+
+  return { grade, people, total, focus: focus.slice(), blocks };
+}
+
+function onGenPlan(){
+  const grade  = $('#pl-grade').value;
+  const people = Math.min(40, Math.max(1, +$('#pl-people').value || 0));
+  const tEl    = $('#pl-time-chips .chip.on');
+  const total  = tEl ? +tEl.dataset.v : 90;
+  const focus  = $$('#pl-focus-chips .chip.on').map(c => c.dataset.v);
+  if (!people){ toast('人数を入力してください'); return; }
+  if (!focus.length){ toast('強化したい項目を1つ以上選んでください'); return; }
+
+  $('#plan-out').innerHTML =
+    '<div class="ai-status"><span class="dot"></span>登録メニューを組み合わせています…</div>';
+  setTimeout(() => {
+    PLAN = generatePlan(grade, people, total, focus);
+    renderPlan();
+    const out = $('#plan-out');
+    if (out.scrollIntoView) out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 300);
+}
+
+function renderPlan(){
+  if (!PLAN) return;
+  const P = PLAN;
+  let h = '<div class="plan-head">'
+        +   '<div class="ph-t">本日の練習プラン</div>'
+        +   '<div class="ph-m"><span>' + esc(P.grade) + '</span><span>' + P.people + '人</span><span>' + P.total + '分</span>'
+        +     P.focus.map(c => '<span>強化：' + esc(c) + '</span>').join('')
+        +   '</div>'
+        + '</div>';
+
+  h += '<div class="card">';
+  h += P.blocks.map((b, i) => {
+    const m = b.cands.length ? Store.menu(b.cands[b.idx]) : null;
+    let bc = '<div class="b-lbl">' + esc(b.label) + '</div>';
+    if (m){
+      bc += '<div class="b-name">' + esc(m.name) + '</div>'
+          + '<div class="b-meta">' + catChip(m.cat)
+          +   '<span class="tbadge">標準' + (+m.time || 0) + '<small>分</small></span>'
+          +   '<span class="tbadge">' + esc(peopleLabel(m)) + '</span>'
+          + '</div>'
+          + '<div class="b-acts">'
+          +   '<button class="btn btn-ghost btn-sm" data-act="open-menu" data-id="' + esc(m.id) + '">詳細を見る</button>'
+          +   (b.cands.length > 1
+              ? '<button class="btn btn-ghost btn-sm" data-act="swap" data-bi="' + i + '">🔄 入れ替え</button>'
+              : '')
+          + '</div>';
+    } else {
+      bc += '<div class="b-name none">該当する登録メニューがありません（管理画面から追加できます）</div>';
+    }
+    return '<div class="block">'
+         +   '<div class="bt"><span class="tbadge">' + b.mins + '<small>分</small></span></div>'
+         +   '<div class="bc">' + bc + '</div>'
+         + '</div>';
+  }).join('');
+  h += '</div>';
+
+  h += '<div class="plan-total"><span class="pt-l">TOTAL ／ 合計時間</span><span class="pt-v">'
+     +   P.blocks.reduce((a, b) => a + b.mins, 0) + '分</span></div>';
+
+  h += '<div class="plan-acts">'
+     +   '<button class="btn" data-act="copy-plan">📋 テキストをコピー</button>'
+     +   '<button class="btn" data-act="regen-plan">↻ 生成し直す</button>'
+     + '</div>';
+
+  $('#plan-out').innerHTML = h;
+}
+
+function swapBlock(i){
+  const b = PLAN && PLAN.blocks[i];
+  if (!b || b.cands.length < 2){ toast('入れ替え候補がありません'); return; }
+  b.idx = (b.idx + 1) % b.cands.length;
+  renderPlan();
+  toast('入れ替えました（候補 ' + (b.idx + 1) + '／' + b.cands.length + '）');
+}
+
+function planText(){
+  const P = PLAN;
+  let t = '【練習プラン】' + P.grade + '・' + P.people + '人・' + P.total + '分\n';
+  t += '強化：' + P.focus.join('／') + '\n\n';
+  P.blocks.forEach((b, i) => {
+    const m = b.cands.length ? Store.menu(b.cands[b.idx]) : null;
+    t += (CIRC[i] || (i + 1) + '.') + ' ' + b.label + '（' + b.mins + '分）\n';
+    t += '　' + (m ? m.name : '（メニュー未定）') + '\n';
+  });
+  t += '\n合計 ' + P.blocks.reduce((a, b) => a + b.mins, 0) + '分　— Drill IQ';
+  return t;
+}
+
+function copyPlanText(){
+  if (!PLAN) return;
+  copyText(planText());
+}
+
+function copyText(txt){
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(() => toast('コピーしました'), () => legacyCopy(txt));
+  } else legacyCopy(txt);
+}
+function legacyCopy(txt){
+  const ta = document.createElement('textarea');
+  ta.value = txt;
+  ta.style.cssText = 'position:fixed;opacity:0;left:-999px';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand('copy'); toast('コピーしました'); }
+  catch (e) { toast('コピーできませんでした'); }
+  ta.remove();
+}
+
+/* ============================================================
+   教科書モード
+   ============================================================ */
+const BOOK = { mode: 'menus', cat: 'all', q: '' };
+
+function sortByCat(list){
+  list.sort((a, b) =>
+    (CATS.indexOf(a.cat) - CATS.indexOf(b.cat)) ||
+    String(a.name || a.title).localeCompare(String(b.name || b.title), 'ja'));
+  return list;
+}
+
+const matchMenu = (m, q) =>
+  norm(m.name).includes(q) || norm(m.purpose).includes(q) ||
+  norm(m.desc).includes(q) || norm(m.cat).includes(q) ||
+  (m.kw || []).some(k => norm(k).includes(q));
+
+const matchPrin = (p, q) =>
+  norm(p.title).includes(q) || norm(p.body).includes(q) ||
+  norm(p.cat).includes(q) || (p.kw || []).some(k => norm(k).includes(q));
+
+function mcardHTML(m){
+  const on = Store.bookmarks.has(m.id);
+  return '<div class="mcard" data-act="open-menu" data-id="' + esc(m.id) + '">'
+       +   '<div class="mc-main">'
+       +     '<div class="mc-name">' + (ytId(m.yt) ? '<span class="ytdot" style="color:#F87171">▶</span>' : '') + esc(m.name) + '</div>'
+       +     '<div class="mc-sub">' + esc(m.purpose) + '</div>'
+       +     '<div class="mc-meta">' + catChip(m.cat) + timeBadge(m.time) + '<span class="tbadge">' + esc(peopleLabel(m)) + '</span></div>'
+       +   '</div>'
+       +   '<div class="mc-side"><button class="star' + (on ? ' on' : '') + '" data-act="bm" data-id="' + esc(m.id) + '">★</button></div>'
+       + '</div>';
+}
+
+function renderBook(){
+  $$('#book-seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === BOOK.mode));
+
+  const showCats = BOOK.mode !== 'bookmarks';
+  $('#book-cats').style.display = showCats ? '' : 'none';
+  if (showCats){
+    $('#book-cats').innerHTML = ['all'].concat(CATS).map(c =>
+      '<button class="chip' + (BOOK.cat === c ? ' on' : '') + '" data-act="book-cat" data-v="' + esc(c) + '">'
+      + (c === 'all' ? 'すべて' : esc(c)) + '</button>').join('');
+  }
+
+  const q = norm(BOOK.q);
+  let html = '', n = 0;
+
+  if (BOOK.mode === 'menus'){
+    const list = sortByCat(Store.menus.filter(m =>
+      (BOOK.cat === 'all' || m.cat === BOOK.cat) && (!q || matchMenu(m, q))));
+    n = list.length;
+    html = list.map(mcardHTML).join('');
+  }
+  else if (BOOK.mode === 'principles'){
+    const list = Store.principles.filter(p =>
+      (BOOK.cat === 'all' || p.cat === BOOK.cat) && (!q || matchPrin(p, q)));
+    n = list.length;
+    html = list.map(principleCard).join('');
+  }
+  else {
+    const ms = Store.menus.filter(m => Store.bookmarks.has(m.id) && (!q || matchMenu(m, q)));
+    const ps = Store.principles.filter(p => Store.bookmarks.has(p.id) && (!q || matchPrin(p, q)));
+    n = ms.length + ps.length;
+    html = ms.map(mcardHTML).join('')
+         + (ps.length ? '<div class="h-eyebrow" style="margin:16px 0 8px">PRINCIPLE</div>' + ps.map(principleCard).join('') : '');
+    if (!n){
+      html = '<div class="empty"><div class="e-ic">★</div><div class="e-t">ブックマークはまだありません</div>'
+           + '<div class="e-d">検索結果や一覧の ★ をタップすると、ここに集まります。</div></div>';
+    }
+  }
+
+  if (!html){
+    html = '<div class="empty"><div class="e-ic">🔎</div><div class="e-t">該当なし</div>'
+         + '<div class="e-d">カテゴリーやキーワードを変えてみてください。</div></div>';
+  }
+
+  $('#book-count').textContent = n + '件';
+  $('#book-list').innerHTML = html;
+}
+
+/* ============================================================
+   管理画面
+   ============================================================ */
+const ADMIN = { ok: false, mode: 'menus' };
+
+function adminLogin(){
+  const v = $('#admin-pass').value;
+  if (v === Store.pass()){
+    ADMIN.ok = true;
+    $('#admin-pass').value = '';
+    renderAdmin();
+    toast('ログインしました');
+  } else {
+    toast('パスコードが違います');
+  }
+}
+
+function renderAdmin(){
+  $('#admin-gate').style.display  = ADMIN.ok ? 'none' : '';
+  $('#admin-panel').style.display = ADMIN.ok ? '' : 'none';
+  if (!ADMIN.ok) return;
+
+  $$('#adm-seg button').forEach(b => b.classList.toggle('on', b.dataset.amode === ADMIN.mode));
+  const body = $('#admin-body'), add = $('#adm-add');
+
+  if (ADMIN.mode === 'menus'){
+    add.innerHTML = '<button class="btn btn-acc btn-block" data-act="adm-new-menu">＋ 練習メニューを追加</button>';
+    const list = sortByCat(Store.menus.slice());
+    body.innerHTML = list.map(m =>
+      '<div class="adm-row"><div class="ar-main">'
+      + '<div class="ar-name">' + esc(m.name) + '</div>'
+      + '<div class="ar-sub">' + esc(m.cat) + ' ・ ' + (+m.time || 0) + '分 ・ ' + esc(peopleLabel(m))
+      + (ytId(m.yt) ? ' ・ ▶動画あり' : '') + '</div></div>'
+      + '<div class="ar-acts">'
+      + '<button class="btn btn-ghost btn-sm" data-act="adm-edit-menu" data-id="' + esc(m.id) + '">編集</button>'
+      + '<button class="btn btn-ghost btn-sm btn-danger" data-act="adm-del-menu" data-id="' + esc(m.id) + '">削除</button>'
+      + '</div></div>').join('')
+      || '<div class="empty"><div class="e-t">メニューがありません</div></div>';
+  }
+  else if (ADMIN.mode === 'principles'){
+    add.innerHTML = '<button class="btn btn-acc btn-block" data-act="adm-new-prin">＋ 原則を追加</button>';
+    body.innerHTML = Store.principles.map(p =>
+      '<div class="adm-row"><div class="ar-main">'
+      + '<div class="ar-name">' + esc(p.title) + '</div>'
+      + '<div class="ar-sub">' + esc(p.cat) + '</div></div>'
+      + '<div class="ar-acts">'
+      + '<button class="btn btn-ghost btn-sm" data-act="adm-edit-prin" data-id="' + esc(p.id) + '">編集</button>'
+      + '<button class="btn btn-ghost btn-sm btn-danger" data-act="adm-del-prin" data-id="' + esc(p.id) + '">削除</button>'
+      + '</div></div>').join('')
+      || '<div class="empty"><div class="e-t">原則がありません</div></div>';
+  }
+  else {
+    add.innerHTML = '';
+    const st = (v, l) => '<div class="st"><div class="sv">' + v + '</div><div class="sl">' + l + '</div></div>';
+    body.innerHTML =
+      '<div class="statgrid">'
+      + st(Store.menus.length, '練習メニュー') + st(Store.principles.length, '原則') + st(Store.bookmarks.size, 'ブックマーク')
+      + '</div>'
+
+      + '<div class="card"><label class="lbl">データの書き出し（全端末へ配布）</label>'
+      + '<div class="hint">書き出した <b>data.json</b> を、GitHubリポジトリの直下（index.html と同じ場所）に置いてデプロイすると、すべての端末がこの内容に更新されます。端末内のデータはそのまま残ります。</div>'
+      + '<button class="btn btn-block" data-act="adm-export" style="margin-top:12px">⬇ data.json を書き出す</button></div>'
+
+      + '<div class="card"><label class="lbl">データの読み込み</label>'
+      + '<div class="hint">書き出した data.json（バックアップ）を読み込めます。統合か置き換えかを選べます。</div>'
+      + '<input type="file" id="imp-file" accept=".json,application/json" style="display:none">'
+      + '<button class="btn btn-block" data-act="adm-import" style="margin-top:12px">⬆ JSONファイルを読み込む</button></div>'
+
+      + '<div class="card"><label class="lbl">管理パスコードの変更</label>'
+      + '<input id="new-pass" class="field" type="text" placeholder="新しいパスコード（4文字以上）" autocomplete="off">'
+      + '<button class="btn btn-block" data-act="adm-pass-save" style="margin-top:10px">変更する</button>'
+      + '<div class="hint" style="margin-top:8px">※この端末のブラウザに保存されます（簡易的な保護です）。</div></div>'
+
+      + '<div class="card">'
+      + '<button class="btn btn-block" data-act="adm-logout">ログアウト</button>'
+      + '<button class="btn btn-block btn-danger" data-act="adm-reset" style="margin-top:10px">⚠ すべてのデータを初期状態に戻す</button>'
+      + '</div>'
+
+      + '<div class="hint" style="text-align:center;margin-top:4px">Drill IQ v' + APP_VER + '</div>';
+  }
+}
+
+/* ----- フォーム ----- */
+const fld = (l, inner) => '<div style="margin-bottom:13px"><label class="lbl">' + l + '</label>' + inner + '</div>';
+const gchip = (v, on) => '<button type="button" class="chip' + (on ? ' on' : '') + '" data-tog data-v="' + v + '">' + v + '</button>';
+
+function openMenuForm(id){
+  const m = id ? (Store.menu(id) || {}) : {};
+  const gr = m.grades || ['中学', '高校'];
+  const catOpts = CATS.map(c => '<option' + (m.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
+
+  const h = '<input type="hidden" id="f-id" value="' + esc(m.id || '') + '">'
+    + fld('練習名 <span class="req">必須</span>', '<input id="f-name" class="field" value="' + esc(m.name || '') + '" placeholder="例：3メン速攻→バック2">')
+    + '<div class="row2">'
+    +   fld('カテゴリー', '<select id="f-cat" class="field">' + catOpts + '</select>')
+    +   fld('所要時間（分）', '<input id="f-time" class="field" type="number" inputmode="numeric" value="' + (+m.time || 15) + '">')
+    + '</div>'
+    + fld('目的', '<input id="f-purpose" class="field" value="' + esc(m.purpose || '') + '" placeholder="この練習で何を身につけるか">')
+    + fld('対象学年', '<div class="chips" id="f-grades">' + gchip('中学', gr.includes('中学')) + gchip('高校', gr.includes('高校')) + '</div>')
+    + '<div class="row2">'
+    +   fld('必要人数（最小）', '<input id="f-minp" class="field" type="number" inputmode="numeric" value="' + (+m.minP || 1) + '">')
+    +   fld('必要人数（最大）', '<input id="f-maxp" class="field" type="number" inputmode="numeric" value="' + (+m.maxP || 30) + '">')
+    + '</div>'
+    + fld('コート使用範囲', '<input id="f-court" class="field" value="' + esc(m.court || '') + '" placeholder="例：半面／全面／ゴール1つ">')
+    + fld('練習説明（実施方法）<span class="req">必須</span>', '<textarea id="f-desc" class="field" rows="5" placeholder="進め方・ルール・発展のさせ方など">' + esc(m.desc || '') + '</textarea>')
+    + fld('指導ポイント（1行に1つ）', '<textarea id="f-points" class="field" rows="4">' + esc((m.points || []).join('\n')) + '</textarea>')
+    + fld('よくあるミス（1行に1つ）', '<textarea id="f-mistakes" class="field" rows="3">' + esc((m.mistakes || []).join('\n')) + '</textarea>')
+    + fld('検索キーワード（カンマ区切り）', '<input id="f-kw" class="field" value="' + esc((m.kw || []).join(', ')) + '" placeholder="例：判断, 速攻, アウトナンバー">')
+    + fld('YouTube URL（任意）', '<input id="f-yt" class="field" type="url" value="' + esc(m.yt || '') + '" placeholder="https://youtu.be/...">')
+    + '<button class="btn btn-acc btn-block" data-act="save-menu">保存する</button>';
+
+  openModal(id ? '練習メニューを編集' : '練習メニューを追加', h);
+}
+
+function saveMenu(){
+  const id   = $('#f-id').value.trim();
+  const name = $('#f-name').value.trim();
+  const desc = $('#f-desc').value.trim();
+  if (!name){ toast('練習名を入力してください'); return; }
+  if (!desc){ toast('練習説明を入力してください'); return; }
+
+  let grades = $$('#f-grades .chip.on').map(c => c.dataset.v);
+  if (!grades.length) grades = ['中学', '高校'];
+
+  const lines = v => v.split('\n').map(s => s.trim()).filter(Boolean);
+  const m = {
+    id: id || uid('u'),
+    name,
+    cat: $('#f-cat').value,
+    purpose: $('#f-purpose').value.trim(),
+    grades,
+    minP: Math.max(1, +$('#f-minp').value || 1),
+    maxP: Math.max(1, +$('#f-maxp').value || 30),
+    time: Math.max(1, +$('#f-time').value || 10),
+    court: $('#f-court').value.trim(),
+    points: lines($('#f-points').value),
+    mistakes: lines($('#f-mistakes').value),
+    desc,
+    kw: $('#f-kw').value.split(/[、,\n]+/).map(s => s.trim()).filter(Boolean),
+    yt: $('#f-yt').value.trim()
+  };
+  if (m.maxP < m.minP) m.maxP = m.minP;
+
+  Store.menus = Store.upsert(Store.menus, [m]);
+  Store.save();
+  closeModal();
+  renderAdmin();
+  toast(id ? '更新しました' : '追加しました');
+}
+
+function delMenu(id){
+  const m = Store.menu(id);
+  if (!m) return;
+  if (!confirm('「' + m.name + '」を削除しますか？')) return;
+  Store.menus = Store.menus.filter(x => x.id !== id);
+  Store.bookmarks.delete(id);
+  Store.save(); Store.saveBM();
+  renderAdmin();
+  toast('削除しました');
+}
+
+function openPrinForm(id){
+  const p = id ? (Store.principle(id) || {}) : {};
+  const catOpts = CATS.map(c => '<option' + (p.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
+  const h = '<input type="hidden" id="f-pid" value="' + esc(p.id || '') + '">'
+    + fld('原則のタイトル <span class="req">必須</span>', '<input id="f-pt" class="field" value="' + esc(p.title || '') + '" placeholder="例：スペーシングの原則">')
+    + fld('カテゴリー', '<select id="f-pcat" class="field">' + catOpts + '</select>')
+    + fld('内容 <span class="req">必須</span>', '<textarea id="f-pbody" class="field" rows="6" placeholder="チームで共有したい考え方・基準">' + esc(p.body || '') + '</textarea>')
+    + fld('検索キーワード（カンマ区切り）', '<input id="f-pkw" class="field" value="' + esc((p.kw || []).join(', ')) + '">')
+    + '<button class="btn btn-acc btn-block" data-act="save-prin">保存する</button>';
+  openModal(id ? '原則を編集' : '原則を追加', h);
+}
+
+function savePrin(){
+  const id    = $('#f-pid').value.trim();
+  const title = $('#f-pt').value.trim();
+  const body  = $('#f-pbody').value.trim();
+  if (!title){ toast('タイトルを入力してください'); return; }
+  if (!body){ toast('内容を入力してください'); return; }
+  const p = {
+    id: id || uid('upr'),
+    title,
+    cat: $('#f-pcat').value,
+    body,
+    kw: $('#f-pkw').value.split(/[、,\n]+/).map(s => s.trim()).filter(Boolean)
+  };
+  Store.principles = Store.upsert(Store.principles, [p]);
+  Store.save();
+  closeModal();
+  renderAdmin();
+  toast(id ? '更新しました' : '追加しました');
+}
+
+function delPrin(id){
+  const p = Store.principle(id);
+  if (!p) return;
+  if (!confirm('「' + p.title + '」を削除しますか？')) return;
+  Store.principles = Store.principles.filter(x => x.id !== id);
+  Store.bookmarks.delete(id);
+  Store.save(); Store.saveBM();
+  renderAdmin();
+  toast('削除しました');
+}
+
+/* ----- データ入出力 ----- */
+function exportData(){
+  const data = {
+    version: Math.floor(Date.now() / 1000),
+    exportedAt: new Date().toISOString(),
+    menus: Store.menus,
+    principles: Store.principles
+  };
+  const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'data.json';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 600);
+  toast('data.json を書き出しました');
+}
+
+function importFile(input){
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const j = JSON.parse(r.result);
+      if (!Array.isArray(j.menus) && !Array.isArray(j.principles)) throw new Error('format');
+      const merge = confirm('既存のデータに統合（マージ）しますか？\n［キャンセル］＝読み込んだ内容で置き換えます');
+      if (merge){
+        if (Array.isArray(j.menus))      Store.menus      = Store.upsert(Store.menus, j.menus);
+        if (Array.isArray(j.principles)) Store.principles = Store.upsert(Store.principles, j.principles);
+      } else {
+        if (Array.isArray(j.menus))      Store.menus      = j.menus;
+        if (Array.isArray(j.principles)) Store.principles = j.principles;
+      }
+      Store.save();
+      renderAdmin();
+      toast('読み込みました（メニュー' + Store.menus.length + '件・原則' + Store.principles.length + '件）');
+    } catch (e) {
+      toast('読み込めませんでした（JSON形式を確認してください）');
+    }
+    input.value = '';
+  };
+  r.readAsText(f);
+}
+
+function savePass(){
+  const v = $('#new-pass').value.trim();
+  if (v.length < 4){ toast('パスコードは4文字以上にしてください'); return; }
+  localStorage.setItem(LS.pass, v);
+  $('#new-pass').value = '';
+  toast('パスコードを変更しました');
+}
+
+function resetAll(){
+  if (!confirm('保存されているデータをすべて削除し、初期データに戻します。よろしいですか？')) return;
+  [LS.menus, LS.prin, LS.seedv, LS.remotev, LS.bm].forEach(k => localStorage.removeItem(k));
+  location.reload();
+}
+
+/* ============================================================
+   イベント・初期化
+   ============================================================ */
+function bindEvents(){
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-act],[data-tab],[data-mode],[data-amode],[data-chip],[data-tog]');
+    if (!el) return;
+
+    if (el.dataset.tab){ switchTab(el.dataset.tab); return; }
+    if (el.dataset.mode){ BOOK.mode = el.dataset.mode; renderBook(); return; }
+    if (el.dataset.amode){ ADMIN.mode = el.dataset.amode; renderAdmin(); return; }
+
+    if ('tog' in el.dataset){ el.classList.toggle('on'); return; }
+
+    if (el.dataset.chip === 'time'){
+      $$('#pl-time-chips .chip').forEach(c => c.classList.toggle('on', c === el));
+      return;
+    }
+    if (el.dataset.chip === 'focus'){
+      if (!el.classList.contains('on') && $$('#pl-focus-chips .chip.on').length >= 3){
+        toast('強化項目は最大3つまでです');
+        return;
+      }
+      el.classList.toggle('on');
+      return;
+    }
+
+    switch (el.dataset.act){
+      case 'search':        runSearch($('#q').value); break;
+      case 'ex':            runSearch(el.dataset.q); break;
+      case 'bm':            toggleBM(el.dataset.id); break;
+      case 'open-menu':     openMenuModal(el.dataset.id); break;
+      case 'open-prin':     openPrinModal(el.dataset.id); break;
+      case 'modal-close':   closeModal(); break;
+      case 'book-cat':      BOOK.cat = el.dataset.v; renderBook(); break;
+      case 'gen-plan':      onGenPlan(); break;
+      case 'swap':          swapBlock(+el.dataset.bi); break;
+      case 'copy-plan':     copyPlanText(); break;
+      case 'regen-plan':    onGenPlan(); break;
+      case 'admin-login':   adminLogin(); break;
+      case 'adm-new-menu':  openMenuForm(null); break;
+      case 'adm-edit-menu': openMenuForm(el.dataset.id); break;
+      case 'adm-del-menu':  delMenu(el.dataset.id); break;
+      case 'adm-new-prin':  openPrinForm(null); break;
+      case 'adm-edit-prin': openPrinForm(el.dataset.id); break;
+      case 'adm-del-prin':  delPrin(el.dataset.id); break;
+      case 'save-menu':     saveMenu(); break;
+      case 'save-prin':     savePrin(); break;
+      case 'adm-export':    exportData(); break;
+      case 'adm-import':    { const fi = $('#imp-file'); if (fi) fi.click(); } break;
+      case 'adm-pass-save': savePass(); break;
+      case 'adm-logout':    ADMIN.ok = false; renderAdmin(); break;
+      case 'adm-reset':     resetAll(); break;
+    }
+  });
+
+  document.addEventListener('change', e => {
+    if (e.target && e.target.id === 'imp-file') importFile(e.target);
+  });
+
+  $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch($('#q').value); });
+  $('#admin-pass').addEventListener('keydown', e => { if (e.key === 'Enter') adminLogin(); });
+  $('#book-q').addEventListener('input', () => { BOOK.q = $('#book-q').value; renderBook(); });
+  $('#modal').addEventListener('click', e => { if (e.target === $('#modal')) closeModal(); });
+}
+
+function init(){
+  Store.load();
+
+  $('#ex-chips').innerHTML = EXAMPLES.map(x =>
+    '<button class="chip" data-act="ex" data-q="' + esc(x) + '">' + esc(x) + '</button>').join('');
+
+  $('#pl-time-chips').innerHTML = PLAN_TIMES.map(t =>
+    '<button class="chip' + (t === 90 ? ' on' : '') + '" data-chip="time" data-v="' + t + '">' + t + '分</button>').join('');
+
+  $('#pl-focus-chips').innerHTML = CATS.map(c =>
+    '<button class="chip" data-chip="focus" data-v="' + esc(c) + '">' + esc(c) + '</button>').join('');
+
+  bindEvents();
+
+  /* data.json による全端末更新（リポジトリに置いた場合のみ） */
+  fetch('./data.json', { cache: 'no-store' })
+    .then(r => (r.ok ? r.json() : null))
+    .then(j => {
+      if (j && Store.applyRemote(j)){
+        toast('練習データを最新版に更新しました');
+        const bv = $('.view[data-view="book"]');
+        if (bv && bv.classList.contains('on')) renderBook();
+      }
+    })
+    .catch(() => {});
+
+  /* Service Worker（PWA・オフライン対応） */
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    });
+  }
+}
+
+init();
+</script>
+</body>
+</html>

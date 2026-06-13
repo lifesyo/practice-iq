@@ -1,0 +1,16 @@
+{
+  "name": "Drill IQ - バスケ練習メニューAI",
+  "short_name": "Drill IQ",
+  "description": "中学・高校バスケットボール指導者向け 練習メニューAI検索アプリ",
+  "lang": "ja",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B1017",
+  "theme_color": "#0B1017",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
