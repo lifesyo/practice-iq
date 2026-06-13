@@ -2001,7 +2001,7 @@ function openMenuForm(id){
     + fld('練習説明（実施方法）<span class="req">必須</span>', '<textarea id="f-desc" class="field" rows="5" placeholder="進め方・ルール・発展のさせ方など">' + esc(m.desc || '') + '</textarea>')
     + fld('指導ポイント（1行に1つ）', '<textarea id="f-points" class="field" rows="4">' + esc((m.points || []).join('\n')) + '</textarea>')
     + fld('よくあるミス（1行に1つ）', '<textarea id="f-mistakes" class="field" rows="3">' + esc((m.mistakes || []).join('\n')) + '</textarea>')
-    + fld('検索キーワード（カンマ区切り）', '<input id="f-kw" class="field" value="' + esc((m.kw || []).join(', ')) + '" placeholder="例：判断, 速攻, アウトナンバー">')
+    + fld('検索キーワード（スペース区切り）', '<input id="f-kw" class="field" value="' + esc((m.kw || []).join(' ')) + '" placeholder="例：判断 速攻 アウトナンバー">')
     + fld('参考動画URL（任意・1行に1つ／複数可）', '<textarea id="f-vids" class="field" rows="3" placeholder="https://youtu.be/xxxx&#10;https://www.youtube.com/watch?v=yyyy" style="font-size:12.5px">' + esc(getVids(m).join('\n')) + '</textarea>')
     + '<button class="btn btn-acc btn-block" data-act="save-menu">保存する</button>';
 
@@ -2032,7 +2032,7 @@ function saveMenu(){
     points: lines($('#f-points').value),
     mistakes: lines($('#f-mistakes').value),
     desc,
-    kw: $('#f-kw').value.split(/[、,\n]+/).map(s => s.trim()).filter(Boolean),
+    kw: $('#f-kw').value.split(/[、,\s　]+/).map(s => s.trim()).filter(Boolean),
     vids: ($('#f-vids').value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean)
   };
   if (m.maxP < m.minP) m.maxP = m.minP;
@@ -2075,7 +2075,7 @@ function openPrinForm(id){
     + fld('原則のタイトル <span class="req">必須</span>', '<input id="f-pt" class="field" value="' + esc(p.title || '') + '" placeholder="例：スペーシングの原則">')
     + fld('カテゴリー', '<select id="f-pcat" class="field">' + catOpts + '</select>')
     + fld('内容 <span class="req">必須</span>', '<textarea id="f-pbody" class="field" rows="6" placeholder="チームで共有したい考え方・基準">' + esc(p.body || '') + '</textarea>')
-    + fld('検索キーワード（カンマ区切り）', '<input id="f-pkw" class="field" value="' + esc((p.kw || []).join(', ')) + '">')
+    + fld('検索キーワード（スペース区切り）', '<input id="f-pkw" class="field" value="' + esc((p.kw || []).join(' ')) + '" placeholder="例：スペーシング 距離 合わせ">')
     + '<button class="btn btn-acc btn-block" data-act="save-prin">保存する</button>';
   openModal(id ? '原則を編集' : '原則を追加', h);
 }
@@ -2091,7 +2091,7 @@ function savePrin(){
     title,
     cat: $('#f-pcat').value,
     body,
-    kw: $('#f-pkw').value.split(/[、,\n]+/).map(s => s.trim()).filter(Boolean)
+    kw: $('#f-pkw').value.split(/[、,\s　]+/).map(s => s.trim()).filter(Boolean)
   };
 
   if (Store._aiEditIdx >= 0 && AI_STAGE[Store._aiEditIdx]){
@@ -2133,7 +2133,7 @@ function openDefForm(id){
     + fld('用語・見出し <span class="req">必須</span>', '<input id="f-dterm" class="field" value="' + esc(d.term || '') + '" placeholder="例：いいパス（「〜とは」が自動で付きます）">')
     + fld('カテゴリー（任意）', '<select id="f-dcat" class="field">' + catOpts + '</select>')
     + fld('定義・説明 <span class="req">必須</span>', '<textarea id="f-dbody" class="field" rows="6" placeholder="「〜とは…である」に続く形で、チームで揃えたい基準・考え方を書く">' + esc(d.body || '') + '</textarea>')
-    + fld('検索キーワード（カンマ区切り）', '<input id="f-dkw" class="field" value="' + esc((d.kw || []).join(', ')) + '" placeholder="例：パス, タイミング, 判断">')
+    + fld('検索キーワード（スペース区切り）', '<input id="f-dkw" class="field" value="' + esc((d.kw || []).join(' ')) + '" placeholder="例：パス タイミング 判断">')
     + '<button class="btn btn-acc btn-block" data-act="save-def">保存する</button>';
   openModal(id ? '定義を編集' : '定義を追加', h);
 }
@@ -2149,7 +2149,7 @@ function saveDef(){
     term,
     cat: $('#f-dcat').value || '',
     body,
-    kw: $('#f-dkw').value.split(/[、,\n]+/).map(s => s.trim()).filter(Boolean)
+    kw: $('#f-dkw').value.split(/[、,\s　]+/).map(s => s.trim()).filter(Boolean)
   };
 
   if (Store._aiEditIdx >= 0 && AI_STAGE[Store._aiEditIdx]){
@@ -2238,6 +2238,13 @@ const _arr = v => {
   return v.map(x => String(x).trim()).filter(Boolean);
 };
 
+/* キーワード専用：スペース（半角・全角）／カンマ／改行いずれでも区切る */
+const _kw = v => {
+  if (v == null) return [];
+  if (!Array.isArray(v)) v = String(v).split(/[、,\s　]+/);
+  return v.map(x => String(x).trim()).filter(Boolean);
+};
+
 function _splitText(v){
   if (Array.isArray(v)) return _arr(v);
   return String(v == null ? '' : v).split(/\r?\n|・|●|＊|^\s*[-*]\s*/m)
@@ -2285,7 +2292,7 @@ function normalizeMenu(o){
     points: _splitText(o.points || o.指導ポイント || o.coachingPoints),
     mistakes: _splitText(o.mistakes || o.よくあるミス || o.commonMistakes),
     desc: String(o.desc || o.description || o.練習説明 || o.実施方法 || o.method || '').trim(),
-    kw: _arr(o.kw || o.keywords || o.キーワード || (typeof o.tags === 'string' ? o.tags.split(/[、,]/) : o.tags)),
+    kw: _kw(o.kw || o.keywords || o.キーワード || o.tags),
     vids: _arr(o.vids || o.videos || o.動画 || o.参考動画 || o.urls || o.youtube || o.YouTube || o.url || o.yt)
   };
 }
@@ -2296,7 +2303,7 @@ function normalizePrin(o){
     title: String(o.title || o.name || o.タイトル || o.原則 || '原則').trim(),
     cat: _normCat(o.cat || o.category || o.カテゴリー),
     body: String(o.body || o.principle || o.内容 || o.desc || o.description || '').trim(),
-    kw: _arr(o.kw || o.keywords || o.キーワード)
+    kw: _kw(o.kw || o.keywords || o.キーワード)
   };
 }
 
@@ -2307,7 +2314,7 @@ function normalizeDef(o){
     term: String(o.term || o.用語 || o.見出し || o.title || o.name || '用語').trim().replace(/とは$/, ''),
     cat: cRaw ? _normCat(cRaw) : '',     // 定義はカテゴリーなしも許容
     body: String(o.body || o.定義 || o.意味 || o.説明 || o.desc || o.description || '').trim(),
-    kw: _arr(o.kw || o.keywords || o.キーワード)
+    kw: _kw(o.kw || o.keywords || o.キーワード)
   };
 }
 
