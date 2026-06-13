@@ -223,9 +223,12 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .sec ul li::before{content:"";position:absolute;left:2px;top:.62em;width:6px;height:6px;border-radius:50%;background:var(--acc-line)}
 .sec.warn ul li::before{background:#FBBF2466}
 .yt{display:flex;align-items:center;gap:12px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px;text-decoration:none}
+.yt+.yt{margin-top:8px}
 .yt img{width:96px;height:54px;border-radius:7px;object-fit:cover;background:#000;flex:none}
+.yt .yt-ph{width:96px;height:54px;border-radius:7px;background:#000;flex:none;display:flex;align-items:center;justify-content:center;color:#F87171;font-size:18px}
+.yt>div{min-width:0}
 .yt .yt-t{font-size:13px;font-weight:700;color:var(--text)}
-.yt .yt-s{font-size:11px;color:var(--faint)}
+.yt .yt-s{font-size:11px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .yt-none{font-size:12.5px;color:var(--faint);padding:4px 2px}
 .r-foot{display:flex;gap:8px;padding:0 16px 14px}
 .star{font-size:18px;line-height:1;filter:grayscale(1) opacity(.4);transition:filter .15s,transform .1s}
@@ -860,6 +863,21 @@ function ytId(url){
   return m ? m[1] : '';
 }
 
+/* メニューの参考動画URLを配列で返す（新: m.vids[] / 旧: m.yt を後方互換で吸収） */
+function getVids(m){
+  let arr = [];
+  if (Array.isArray(m.vids)) arr = m.vids.slice();
+  else if (typeof m.vids === 'string' && m.vids.trim()) arr = m.vids.split(/[\n,]+/);
+  if (m.yt && String(m.yt).trim()) arr.push(String(m.yt));   // 旧データの単一URLも拾う
+  /* 整形＋重複除去 */
+  const seen = new Set(), out = [];
+  arr.map(s => String(s || '').trim()).filter(Boolean).forEach(u => {
+    if (!seen.has(u)){ seen.add(u); out.push(u); }
+  });
+  return out;
+}
+function hasVid(m){ return getVids(m).length > 0; }
+
 let _toastTimer = null;
 function toast(msg){
   const t = $('#toast');
@@ -1136,12 +1154,19 @@ function gradeLabel(m){
 }
 
 function ytHTML(m){
-  const id = ytId(m.yt);
-  if (!id) return '<div class="yt-none">参考動画は未登録です（管理画面からYouTube URLを追加できます）</div>';
-  return '<a class="yt" href="' + esc(m.yt) + '" target="_blank" rel="noopener">'
-       +   '<img src="https://img.youtube.com/vi/' + id + '/mqdefault.jpg" alt="参考動画" loading="lazy">'
-       +   '<div><div class="yt-t">YouTubeで動画を見る ▶</div><div class="yt-s">' + esc(m.yt) + '</div></div>'
-       + '</a>';
+  const vids = getVids(m);
+  if (!vids.length) return '<div class="yt-none">参考動画は未登録です（管理画面からYouTube URLを追加できます）</div>';
+  return vids.map((url, i) => {
+    const id = ytId(url);
+    const thumb = id
+      ? '<img src="https://img.youtube.com/vi/' + id + '/mqdefault.jpg" alt="参考動画" loading="lazy">'
+      : '<div class="yt-ph">▶</div>';
+    const label = vids.length > 1 ? ('動画' + (i + 1) + 'をYouTubeで見る ▶') : 'YouTubeで動画を見る ▶';
+    return '<a class="yt" href="' + esc(url) + '" target="_blank" rel="noopener">'
+         +   thumb
+         +   '<div><div class="yt-t">' + label + '</div><div class="yt-s">' + esc(url) + '</div></div>'
+         + '</a>';
+  }).join('');
 }
 
 function liList(arr){
@@ -1688,7 +1713,7 @@ function mcardHTML(m){
   const on = Store.bookmarks.has(m.id);
   return '<div class="mcard" data-act="open-menu" data-id="' + esc(m.id) + '">'
        +   '<div class="mc-main">'
-       +     '<div class="mc-name">' + (ytId(m.yt) ? '<span class="ytdot" style="color:#F87171">▶</span>' : '') + esc(m.name) + '</div>'
+       +     '<div class="mc-name">' + (hasVid(m) ? '<span class="ytdot" style="color:#F87171">▶</span>' : '') + esc(m.name) + '</div>'
        +     '<div class="mc-sub">' + esc(m.purpose) + '</div>'
        +     '<div class="mc-meta">' + catChip(m.cat) + timeBadge(m.time) + '<span class="tbadge">' + esc(peopleLabel(m)) + '</span></div>'
        +   '</div>'
@@ -1770,7 +1795,7 @@ function renderAdmin(){
       '<div class="adm-row"><div class="ar-main">'
       + '<div class="ar-name">' + esc(m.name) + '</div>'
       + '<div class="ar-sub">' + esc(m.cat) + ' ・ ' + (+m.time || 0) + '分 ・ ' + esc(peopleLabel(m))
-      + (ytId(m.yt) ? ' ・ ▶動画あり' : '') + '</div></div>'
+      + (hasVid(m) ? ' ・ ▶動画あり' : '') + '</div></div>'
       + '<div class="ar-acts">'
       + '<button class="btn btn-ghost btn-sm" data-act="adm-edit-menu" data-id="' + esc(m.id) + '">編集</button>'
       + '<button class="btn btn-ghost btn-sm btn-danger" data-act="adm-del-menu" data-id="' + esc(m.id) + '">削除</button>'
@@ -1849,7 +1874,7 @@ function openMenuForm(id){
     + fld('指導ポイント（1行に1つ）', '<textarea id="f-points" class="field" rows="4">' + esc((m.points || []).join('\n')) + '</textarea>')
     + fld('よくあるミス（1行に1つ）', '<textarea id="f-mistakes" class="field" rows="3">' + esc((m.mistakes || []).join('\n')) + '</textarea>')
     + fld('検索キーワード（カンマ区切り）', '<input id="f-kw" class="field" value="' + esc((m.kw || []).join(', ')) + '" placeholder="例：判断, 速攻, アウトナンバー">')
-    + fld('YouTube URL（任意）', '<input id="f-yt" class="field" type="url" value="' + esc(m.yt || '') + '" placeholder="https://youtu.be/...">')
+    + fld('参考動画URL（任意・1行に1つ／複数可）', '<textarea id="f-vids" class="field" rows="3" placeholder="https://youtu.be/xxxx&#10;https://www.youtube.com/watch?v=yyyy" style="font-size:12.5px">' + esc(getVids(m).join('\n')) + '</textarea>')
     + '<button class="btn btn-acc btn-block" data-act="save-menu">保存する</button>';
 
   openModal(id ? '練習メニューを編集' : '練習メニューを追加', h);
@@ -1880,7 +1905,7 @@ function saveMenu(){
     mistakes: lines($('#f-mistakes').value),
     desc,
     kw: $('#f-kw').value.split(/[、,\n]+/).map(s => s.trim()).filter(Boolean),
-    yt: $('#f-yt').value.trim()
+    vids: ($('#f-vids').value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean)
   };
   if (m.maxP < m.minP) m.maxP = m.minP;
 
@@ -2071,7 +2096,7 @@ function normalizeMenu(o){
     mistakes: _splitText(o.mistakes || o.よくあるミス || o.commonMistakes),
     desc: String(o.desc || o.description || o.練習説明 || o.実施方法 || o.method || '').trim(),
     kw: _arr(o.kw || o.keywords || o.キーワード || (typeof o.tags === 'string' ? o.tags.split(/[、,]/) : o.tags)),
-    yt: String(o.yt || o.youtube || o.url || o.YouTube || '').trim()
+    vids: _arr(o.vids || o.videos || o.動画 || o.参考動画 || o.urls || o.youtube || o.YouTube || o.url || o.yt)
   };
 }
 
