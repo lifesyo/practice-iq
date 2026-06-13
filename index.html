@@ -1603,8 +1603,14 @@ function renderAdmin(){
       + '<div class="hint">書き出した <b>data.json</b> を、GitHubリポジトリの直下（index.html と同じ場所）に置いてデプロイすると、すべての端末がこの内容に更新されます。端末内のデータはそのまま残ります。</div>'
       + '<button class="btn btn-block" data-act="adm-export" style="margin-top:12px">⬇ data.json を書き出す</button></div>'
 
-      + '<div class="card"><label class="lbl">データの読み込み</label>'
-      + '<div class="hint">書き出した data.json（バックアップ）を読み込めます。統合か置き換えかを選べます。</div>'
+      + '<div class="card"><label class="lbl">AIで取り込み（PDF・写真から）</label>'
+      + '<div class="hint">資料のPDFやスクリーンショットをClaudeとのチャットに貼り、「Drill IQ用のJSONにして」と頼むと、各項目に振り分けたJSONが返ってきます。それをここに貼り付けて、内容を確認してから取り込めます。</div>'
+      + '<textarea id="ai-json" class="field" rows="5" placeholder=\'ここにJSONを貼り付け（例：{"menus":[...],"principles":[...]} または [ {...}, {...} ]）\' style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px"></textarea>'
+      + '<button class="btn btn-acc btn-block" data-act="ai-preview" style="margin-top:10px">内容を確認する</button>'
+      + '<div id="ai-preview" style="margin-top:12px"></div></div>'
+
+      + '<div class="card"><label class="lbl">データの読み込み（バックアップ）</label>'
+      + '<div class="hint">書き出した data.json を読み込めます。統合か置き換えかを選べます。</div>'
       + '<input type="file" id="imp-file" accept=".json,application/json" style="display:none">'
       + '<button class="btn btn-block" data-act="adm-import" style="margin-top:12px">⬆ JSONファイルを読み込む</button></div>'
 
@@ -1627,7 +1633,9 @@ const fld = (l, inner) => '<div style="margin-bottom:13px"><label class="lbl">' 
 const gchip = (v, on) => '<button type="button" class="chip' + (on ? ' on' : '') + '" data-tog data-v="' + v + '">' + v + '</button>';
 
 function openMenuForm(id){
-  const m = id ? (Store.menu(id) || {}) : {};
+  let m;
+  if (id && id.indexOf('__ai_') === 0){ m = Store._aiTmp || {}; Store._aiEditIdx = +id.slice(5); }
+  else { m = id ? (Store.menu(id) || {}) : {}; Store._aiEditIdx = -1; }
   const gr = m.grades || ['中学', '高校'];
   const catOpts = CATS.map(c => '<option' + (m.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
 
@@ -1683,6 +1691,15 @@ function saveMenu(){
   };
   if (m.maxP < m.minP) m.maxP = m.minP;
 
+  if (Store._aiEditIdx >= 0 && AI_STAGE[Store._aiEditIdx]){
+    AI_STAGE[Store._aiEditIdx] = { kind: 'menu', obj: m, use: true };
+    Store._aiEditIdx = -1;
+    closeModal();
+    renderAIPreview();
+    toast('プレビューを更新しました');
+    return;
+  }
+
   Store.menus = Store.upsert(Store.menus, [m]);
   Store.save();
   closeModal();
@@ -1702,7 +1719,9 @@ function delMenu(id){
 }
 
 function openPrinForm(id){
-  const p = id ? (Store.principle(id) || {}) : {};
+  let p;
+  if (id && id.indexOf('__ai_') === 0){ p = Store._aiTmp || {}; Store._aiEditIdx = +id.slice(5); }
+  else { p = id ? (Store.principle(id) || {}) : {}; Store._aiEditIdx = -1; }
   const catOpts = CATS.map(c => '<option' + (p.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
   const h = '<input type="hidden" id="f-pid" value="' + esc(p.id || '') + '">'
     + fld('原則のタイトル <span class="req">必須</span>', '<input id="f-pt" class="field" value="' + esc(p.title || '') + '" placeholder="例：スペーシングの原則">')
@@ -1726,6 +1745,16 @@ function savePrin(){
     body,
     kw: $('#f-pkw').value.split(/[、,\n]+/).map(s => s.trim()).filter(Boolean)
   };
+
+  if (Store._aiEditIdx >= 0 && AI_STAGE[Store._aiEditIdx]){
+    AI_STAGE[Store._aiEditIdx] = { kind: 'principle', obj: p, use: true };
+    Store._aiEditIdx = -1;
+    closeModal();
+    renderAIPreview();
+    toast('プレビューを更新しました');
+    return;
+  }
+
   Store.principles = Store.upsert(Store.principles, [p]);
   Store.save();
   closeModal();
@@ -1787,6 +1816,177 @@ function importFile(input){
     input.value = '';
   };
   r.readAsText(f);
+}
+
+/* ----- AI取り込み（PDF・写真→JSON貼り付け） ----- */
+let AI_STAGE = [];   // [{kind:'menu'|'principle', obj, use:true}]
+
+const _arr = v => {
+  if (v == null) return [];
+  if (!Array.isArray(v)) v = String(v).split(/[、,\n]+/);
+  return v.map(x => String(x).trim()).filter(Boolean);
+};
+
+function _splitText(v){
+  if (Array.isArray(v)) return _arr(v);
+  return String(v == null ? '' : v).split(/\r?\n|・|●|＊|^\s*[-*]\s*/m)
+    .map(s => s.trim()).filter(Boolean);
+}
+
+/* レコードがメニューか原則かを推定 */
+function classifyRecord(o){
+  if (o.kind === 'menu' || o.kind === 'principle') return o.kind;
+  if (o.type === 'menu' || o.type === 'principle') return o.type;
+  const hasMenuFields = o.desc || o.purpose || o.points || o.mistakes || o.time || o.cat || o.category;
+  const hasPrinFields = (o.body || o.principle) && !hasMenuFields;
+  if (hasPrinFields) return 'principle';
+  return 'menu';
+}
+
+const _normCat = c => CATS.includes(c) ? c : (CATS.find(x => String(c || '').includes(x)) || 'シュート');
+
+function normalizeMenu(o){
+  const grRaw = o.grades || o.grade || o.対象学年 || ['中学', '高校'];
+  let grades = Array.isArray(grRaw) ? grRaw : String(grRaw).split(/[、,／/・]+/);
+  grades = grades.map(g => /高/.test(g) ? '高校' : (/中|ミニ/.test(g) ? '中学' : '')).filter(Boolean);
+  if (!grades.length) grades = ['中学', '高校'];
+  grades = Array.from(new Set(grades));
+
+  const minP = Math.max(1, parseInt(o.minP || o.minPlayers || (o.people && String(o.people).match(/\d+/)) || 1, 10) || 1);
+  let maxP = parseInt(o.maxP || o.maxPlayers || 0, 10) || 0;
+  if (!maxP){
+    const mm = String(o.people || o.必要人数 || '').match(/(\d+)\s*[〜~\-]\s*(\d+)/);
+    maxP = mm ? +mm[2] : Math.max(minP, 30);
+  }
+  if (maxP < minP) maxP = minP;
+
+  return {
+    id: o.id || uid('ai'),
+    name: String(o.name || o.title || o.練習名 || '名称未設定').trim(),
+    cat: _normCat(o.cat || o.category || o.カテゴリー || o.カテゴリ),
+    purpose: String(o.purpose || o.目的 || '').trim(),
+    grades,
+    minP, maxP,
+    time: Math.max(1, parseInt(o.time || o.minutes || o.所要時間 || 15, 10) || 15),
+    court: String(o.court || o.コート使用範囲 || o.コート || '').trim(),
+    points: _splitText(o.points || o.指導ポイント || o.coachingPoints),
+    mistakes: _splitText(o.mistakes || o.よくあるミス || o.commonMistakes),
+    desc: String(o.desc || o.description || o.練習説明 || o.実施方法 || o.method || '').trim(),
+    kw: _arr(o.kw || o.keywords || o.キーワード || (typeof o.tags === 'string' ? o.tags.split(/[、,]/) : o.tags)),
+    yt: String(o.yt || o.youtube || o.url || o.YouTube || '').trim()
+  };
+}
+
+function normalizePrin(o){
+  return {
+    id: o.id || uid('aipr'),
+    title: String(o.title || o.name || o.タイトル || o.原則 || '原則').trim(),
+    cat: _normCat(o.cat || o.category || o.カテゴリー),
+    body: String(o.body || o.principle || o.内容 || o.desc || o.description || '').trim(),
+    kw: _arr(o.kw || o.keywords || o.キーワード)
+  };
+}
+
+/* 貼り付けJSONを配列に展開（{menus,principles} / 単一配列 / 単一オブジェクト いずれも対応） */
+function parseAIInput(text){
+  const j = JSON.parse(text);
+  const out = [];
+  if (Array.isArray(j)){
+    j.forEach(o => { if (o && typeof o === 'object') out.push(o); });
+  } else if (j && typeof j === 'object'){
+    let matched = false;
+    if (Array.isArray(j.menus)){ matched = true; j.menus.forEach(o => o && out.push(Object.assign({ kind: 'menu' }, o))); }
+    if (Array.isArray(j.principles)){ matched = true; j.principles.forEach(o => o && out.push(Object.assign({ kind: 'principle' }, o))); }
+    if (!matched) out.push(j);
+  }
+  return out;
+}
+
+function aiPreview(){
+  const txt = ($('#ai-json').value || '').trim();
+  const box = $('#ai-preview');
+  if (!txt){ toast('JSONを貼り付けてください'); return; }
+
+  let recs;
+  try { recs = parseAIInput(txt); }
+  catch (e){
+    box.innerHTML = '<div class="hint" style="color:var(--bad)">JSONとして読み取れませんでした。チャットからコピーしたテキスト全体（{ }や[ ]を含む）を貼り付けてください。</div>';
+    return;
+  }
+  if (!recs.length){ box.innerHTML = '<div class="hint" style="color:var(--bad)">取り込めるデータが見つかりませんでした。</div>'; return; }
+
+  AI_STAGE = recs.map(o => {
+    const kind = classifyRecord(o);
+    return { kind, obj: kind === 'menu' ? normalizeMenu(o) : normalizePrin(o), use: true };
+  });
+
+  renderAIPreview();
+}
+
+function renderAIPreview(){
+  const box = $('#ai-preview');
+  const nMenu = AI_STAGE.filter(s => s.kind === 'menu').length;
+  const nPrin = AI_STAGE.filter(s => s.kind === 'principle').length;
+
+  let h = '<div class="hint" style="margin-bottom:8px">読み取り結果：練習メニュー <b>' + nMenu + '件</b>／原則 <b>' + nPrin + '件</b>。取り込むものにチェックを入れてください。</div>';
+
+  h += AI_STAGE.map((s, i) => {
+    const o = s.obj;
+    const badge = s.kind === 'menu'
+      ? catChip(o.cat) + '<span class="tbadge">' + o.time + '<small>分</small></span><span class="tbadge">' + esc(peopleLabel(o)) + '</span>'
+      : '<span class="catchip" style="color:#A78BFA;background:#A78BFA1f;border:1px solid #A78BFA4d">原則</span>' + catChip(o.cat);
+    const sub = s.kind === 'menu'
+      ? esc(o.purpose || o.desc || '（説明なし）')
+      : esc(o.body || '（内容なし）');
+    return '<div class="adm-row" style="align-items:flex-start">'
+      + '<label style="display:flex;gap:10px;flex:1;cursor:pointer">'
+      +   '<input type="checkbox" data-ai-chk="' + i + '"' + (s.use ? ' checked' : '') + ' style="margin-top:3px;width:18px;height:18px;accent-color:var(--acc)">'
+      +   '<div class="ar-main"><div class="ar-name">' + esc(s.kind === 'menu' ? o.name : o.title) + '</div>'
+      +     '<div class="ar-sub" style="margin:3px 0 5px">' + sub + '</div>'
+      +     '<div class="mc-meta">' + badge + '</div></div>'
+      + '</label>'
+      + '<div class="ar-acts"><button class="btn btn-ghost btn-sm" data-act="ai-edit" data-i="' + i + '">編集</button></div>'
+      + '</div>';
+  }).join('');
+
+  h += '<button class="btn btn-acc btn-block" data-act="ai-commit" style="margin-top:12px">チェックした項目を取り込む</button>'
+     + '<button class="btn btn-ghost btn-block btn-sm" data-act="ai-clear" style="margin-top:8px">クリア</button>';
+
+  box.innerHTML = h;
+}
+
+/* プレビュー項目を既存のメニュー/原則フォームで微修正 */
+function aiEdit(i){
+  const s = AI_STAGE[i];
+  if (!s) return;
+  if (s.kind === 'menu'){
+    Store._aiTmp = s.obj;
+    openMenuForm('__ai_' + i);
+  } else {
+    Store._aiTmp = s.obj;
+    openPrinForm('__ai_' + i);
+  }
+}
+
+function aiCommit(){
+  const chosen = AI_STAGE.filter(s => s.use);
+  if (!chosen.length){ toast('取り込む項目にチェックを入れてください'); return; }
+  const menus = chosen.filter(s => s.kind === 'menu').map(s => s.obj);
+  const prins = chosen.filter(s => s.kind === 'principle').map(s => s.obj);
+  if (menus.length) Store.menus      = Store.upsert(Store.menus, menus);
+  if (prins.length) Store.principles = Store.upsert(Store.principles, prins);
+  Store.save();
+  AI_STAGE = [];
+  $('#ai-json').value = '';
+  renderAdmin();
+  toast('取り込みました（メニュー' + menus.length + '件・原則' + prins.length + '件）');
+}
+
+function aiClear(){
+  AI_STAGE = [];
+  $('#ai-json').value = '';
+  const box = $('#ai-preview');
+  if (box) box.innerHTML = '';
 }
 
 function savePass(){
@@ -1854,6 +2054,10 @@ function bindEvents(){
       case 'adm-export':    exportData(); break;
       case 'adm-import':    { const fi = $('#imp-file'); if (fi) fi.click(); } break;
       case 'adm-pass-save': savePass(); break;
+      case 'ai-preview':    aiPreview(); break;
+      case 'ai-edit':       aiEdit(+el.dataset.i); break;
+      case 'ai-commit':     aiCommit(); break;
+      case 'ai-clear':      aiClear(); break;
       case 'adm-logout':    ADMIN.ok = false; renderAdmin(); break;
       case 'adm-reset':     resetAll(); break;
     }
@@ -1861,6 +2065,10 @@ function bindEvents(){
 
   document.addEventListener('change', e => {
     if (e.target && e.target.id === 'imp-file') importFile(e.target);
+    if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-ai-chk')){
+      const i = +e.target.getAttribute('data-ai-chk');
+      if (AI_STAGE[i]) AI_STAGE[i].use = e.target.checked;
+    }
   });
 
   $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch($('#q').value); });
