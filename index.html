@@ -12,6 +12,31 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Drill IQ">
+
+<!-- ===== Firebase（Googleログイン＋データ同期）===== -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+/* ============================================================
+   Firebase 設定
+   ↓↓↓ Firebaseコンソールで取得した firebaseConfig をここに貼り付けてください ↓↓↓
+   （[プロジェクトの設定] > [マイアプリ] > ウェブアプリ で確認できます）
+   ============================================================ */
+window.FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCi0S37MkNFt-v21Xz3ou5T_eKwcdCAui8",
+  authDomain: "practiceiq-a823d.firebaseapp.com",
+  projectId: "practiceiq-a823d",
+  storageBucket: "practiceiq-a823d.firebasestorage.app",
+  messagingSenderId: "25580089404",
+  appId: "1:25580089404:web:485cfbbd6b9ddce5da9339",
+  measurementId: "G-3YYD5YYF0J"
+};
+
+/* 管理者として認める Google アカウント（このメールでログイン中のみ管理画面に入れます）。
+   追加したい場合はカンマ区切りで増やせます。 */
+window.ADMIN_EMAILS = ["lifesyo4030@gmail.com"];
+</script>
 <style>
 /* ============================================================
    Drill IQ — バスケ練習メニューAI
@@ -274,6 +299,14 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .gate .g-ic{font-size:34px;margin-bottom:10px}
 .gate .g-t{font-weight:900;font-size:17px;margin-bottom:4px}
 .gate .g-d{font-size:12.5px;color:var(--sub);margin-bottom:18px;line-height:1.7}
+.sync-bar{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:10px 13px;margin-bottom:13px;font-size:12px}
+.sync-bar .sb-dot{width:8px;height:8px;border-radius:50%;background:var(--acc);flex-shrink:0;box-shadow:0 0 0 3px var(--acc-line)}
+.sync-bar .sb-dot.off{background:var(--faint);box-shadow:none}
+.sync-bar .sb-dot.busy{background:#FBBF24;box-shadow:0 0 0 3px #FBBF2433}
+.sync-bar .sb-main{flex:1;min-width:0}
+.sync-bar .sb-mail{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.sync-bar .sb-stat{font-size:10.5px;color:var(--faint);margin-top:1px}
+.sync-bar .sb-out{font-size:11px;color:var(--sub);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;flex-shrink:0}
 .adm-row{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:8px}
 .adm-row .ar-main{flex:1;min-width:0}
 .adm-row .ar-name{font-size:13.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -425,12 +458,17 @@ label.lbl .req{color:var(--acc);margin-left:3px}
     <div id="admin-gate" class="gate">
       <div class="g-ic">🔒</div>
       <div class="g-t">管理者専用です</div>
-      <div class="g-d">練習メニュー・原則の登録や、データの書き出し／読み込みができます。</div>
-      <input id="admin-pass" class="field" type="password" placeholder="パスコード" style="text-align:center;margin-bottom:10px">
-      <button class="btn btn-acc btn-block" data-act="admin-login">ログイン</button>
+      <div class="g-d">Googleアカウントでログインすると、練習メニュー・原則の登録や、データの同期ができます。</div>
+      <div id="auth-area">
+        <button class="btn btn-acc btn-block" data-act="google-login">
+          <span style="font-weight:900">G</span>&nbsp;&nbsp;Googleでログイン
+        </button>
+      </div>
+      <div id="auth-msg" class="hint" style="margin-top:12px;text-align:center"></div>
     </div>
 
     <div id="admin-panel" style="display:none">
+      <div id="sync-bar" class="sync-bar"></div>
       <div class="seg" id="adm-seg">
         <button data-amode="menus" class="on">練習メニュー</button>
         <button data-amode="principles">原則</button>
@@ -895,6 +933,169 @@ const Store = {
   principle(id){ return this.principles.find(x => x.id === id); },
   pass(){ return localStorage.getItem(LS.pass) || DEFAULT_PASS; }
 };
+
+/* ============================================================
+   Firebase（Googleログイン ＋ データ同期）
+   ・menus / principles を共有ドキュメント drilliq/shared に保存
+   ・管理者（ADMIN_EMAILS）がログイン中のみ書き込み
+   ・誰でも読み取り可（ログイン不要で閲覧）
+   ・オフライン：localStorageに即時キャッシュ＋Firestore永続化
+   ============================================================ */
+const Sync = {
+  ready: false, auth: null, db: null,
+  user: null, isAdmin: false, busy: false,
+  lastError: '',
+
+  configured(){
+    const c = window.FIREBASE_CONFIG || {};
+    return !!(c.apiKey && c.projectId && c.appId);
+  },
+
+  init(){
+    if (!this.configured()){
+      this.lastError = 'noconfig';
+      renderAuth();
+      return;
+    }
+    try {
+      if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+      this.auth = firebase.auth();
+      this.db   = firebase.firestore();
+      try {
+        this.db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+      } catch (e) {}
+      this.ready = true;
+
+      this.auth.onAuthStateChanged(u => {
+        this.user = u || null;
+        const email = (u && u.email || '').toLowerCase();
+        this.isAdmin = !!u && (window.ADMIN_EMAILS || []).map(e => e.toLowerCase()).includes(email);
+        renderAuth();
+        renderAdmin();
+        if (this.ready) this.listen();   // ログイン状態に関わらず共有データを購読
+      });
+
+      this.listen();
+    } catch (e){
+      this.lastError = 'init:' + (e && e.message || e);
+      renderAuth();
+    }
+  },
+
+  login(){
+    if (!this.configured()){ toast('Firebaseの設定が未入力です'); return; }
+    if (!this.ready){ toast('初期化中です。少し待って再度お試しください'); return; }
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    this.auth.signInWithPopup(provider).catch(err => {
+      if (err && err.code === 'auth/popup-blocked'){
+        this.auth.signInWithRedirect(provider);
+        return;
+      }
+      if (err && err.code === 'auth/popup-closed-by-user') return;
+      toast('ログインに失敗しました：' + (err && err.code || ''));
+    });
+  },
+
+  logout(){
+    if (this.auth) this.auth.signOut();
+  },
+
+  _doc(){ return this.db.collection('drilliq').doc('shared'); },
+
+  /* 共有データの購読（リアルタイム反映） */
+  _unsub: null,
+  listen(){
+    if (!this.ready || this._unsub) return;
+    this._unsub = this._doc().onSnapshot(snap => {
+      const d = snap.data();
+      if (!d) return;
+      const remoteV = +d.version || 0;
+      const localV  = +(localStorage.getItem(LS.remotev) || 0);
+      /* 自分が今送った版より新しい時だけ反映（自分の編集を巻き戻さない） */
+      if (remoteV >= localV){
+        if (Array.isArray(d.menus))      Store.menus      = d.menus;
+        if (Array.isArray(d.principles)) Store.principles = d.principles;
+        localStorage.setItem(LS.remotev, String(remoteV));
+        Store.save();
+        refreshViews();
+      }
+      this.setStat();
+    }, err => {
+      this.lastError = 'listen:' + (err && err.code || '');
+      this.setStat();
+    });
+  },
+
+  /* 管理者の編集を共有ドキュメントへ保存 */
+  push(){
+    if (!this.ready || !this.isAdmin) return Promise.resolve(false);
+    const version = Math.floor(Date.now() / 1000);
+    localStorage.setItem(LS.remotev, String(version));
+    this.busy = true; this.setStat();
+    return this._doc().set({
+      version,
+      menus: Store.menus,
+      principles: Store.principles,
+      updatedBy: (this.user && this.user.email) || '',
+      updatedAt: new Date().toISOString()
+    }).then(() => {
+      this.busy = false; this.setStat();
+      return true;
+    }).catch(err => {
+      this.busy = false;
+      this.lastError = 'push:' + (err && err.code || '');
+      this.setStat();
+      toast('同期に失敗しました（' + (err && err.code || 'error') + '）。端末内には保存済みです');
+      return false;
+    });
+  },
+
+  setStat(){
+    const bar = $('#sync-bar');
+    if (!bar || !this.user) return;
+    const dotCls = this.busy ? 'busy' : (this.ready ? '' : 'off');
+    const stat = this.busy ? '同期中…'
+      : this.isAdmin ? '同期オン（この端末の保存は全端末へ反映）'
+      : '閲覧のみ（編集権限がありません）';
+    bar.innerHTML =
+      '<span class="sb-dot ' + dotCls + '"></span>'
+      + '<div class="sb-main"><div class="sb-mail">' + esc(this.user.email || '') + '</div>'
+      + '<div class="sb-stat">' + esc(stat) + '</div></div>'
+      + '<button class="sb-out" data-act="google-logout">ログアウト</button>';
+  }
+};
+
+/* ログイン画面（ゲート）の表示制御 */
+function renderAuth(){
+  const area = $('#auth-area'), msg = $('#auth-msg');
+  if (!area) return;
+
+  if (!Sync.configured()){
+    area.innerHTML = '<div class="hint" style="color:var(--bad);text-align:left">⚠ Firebaseの設定（firebaseConfig）がまだ入力されていません。<br>index.html の上部にある <b>FIREBASE_CONFIG</b> に、Firebaseコンソールの設定を貼り付けてください。</div>';
+    if (msg) msg.textContent = '';
+    return;
+  }
+
+  area.innerHTML = '<button class="btn btn-acc btn-block" data-act="google-login"><span style="font-weight:900">G</span>&nbsp;&nbsp;Googleでログイン</button>';
+
+  if (msg){
+    if (Sync.user && !Sync.isAdmin){
+      msg.innerHTML = 'ログイン中：<b>' + esc(Sync.user.email || '') + '</b><br>このアカウントには管理者権限がありません。<br><span style="cursor:pointer;text-decoration:underline" data-act="google-logout">別のアカウントでログインし直す</span>';
+    } else {
+      msg.textContent = '';
+    }
+  }
+}
+
+/* 同期で変わったデータを各画面に反映 */
+function refreshViews(){
+  const sv = $('.view[data-view="search"]');
+  const bv = $('.view[data-view="book"]');
+  const av = $('.view[data-view="admin"]');
+  if (bv && bv.classList.contains('on')) renderBook();
+  if (av && av.classList.contains('on')) renderAdmin();
+}
 
 /* ============================================================
    画面切替
@@ -1543,25 +1744,20 @@ function renderBook(){
 /* ============================================================
    管理画面
    ============================================================ */
-const ADMIN = { ok: false, mode: 'menus' };
+const ADMIN = { mode: 'menus' };
 
-function adminLogin(){
-  const v = $('#admin-pass').value;
-  if (v === Store.pass()){
-    ADMIN.ok = true;
-    $('#admin-pass').value = '';
-    renderAdmin();
-    toast('ログインしました');
-  } else {
-    toast('パスコードが違います');
-  }
-}
+function isAdmin(){ return !!Sync.isAdmin; }
 
 function renderAdmin(){
-  $('#admin-gate').style.display  = ADMIN.ok ? 'none' : '';
-  $('#admin-panel').style.display = ADMIN.ok ? '' : 'none';
-  if (!ADMIN.ok) return;
+  const gate  = $('#admin-gate');
+  const panel = $('#admin-panel');
+  if (!gate || !panel) return;
+  const ok = isAdmin();
+  gate.style.display  = ok ? 'none' : '';
+  panel.style.display = ok ? '' : 'none';
+  if (!ok){ renderAuth(); return; }
 
+  Sync.setStat();
   $$('#adm-seg button').forEach(b => b.classList.toggle('on', b.dataset.amode === ADMIN.mode));
   const body = $('#admin-body'), add = $('#adm-add');
 
@@ -1599,30 +1795,25 @@ function renderAdmin(){
       + st(Store.menus.length, '練習メニュー') + st(Store.principles.length, '原則') + st(Store.bookmarks.size, 'ブックマーク')
       + '</div>'
 
-      + '<div class="card"><label class="lbl">データの書き出し（全端末へ配布）</label>'
-      + '<div class="hint">書き出した <b>data.json</b> を、GitHubリポジトリの直下（index.html と同じ場所）に置いてデプロイすると、すべての端末がこの内容に更新されます。端末内のデータはそのまま残ります。</div>'
-      + '<button class="btn btn-block" data-act="adm-export" style="margin-top:12px">⬇ data.json を書き出す</button></div>'
+      + '<div class="card"><label class="lbl">クラウド同期について</label>'
+      + '<div class="hint">この管理画面で保存した練習メニュー・原則は、自動的にクラウド（Firebase）へ保存され、<b>同じGoogleアカウントでログインした全ての端末</b>（Mac・iPad・iPhone）に反映されます。一度読み込んだ内容は<b>オフラインでもいつでも閲覧</b>できます。</div></div>'
 
       + '<div class="card"><label class="lbl">AIで取り込み（PDF・写真から）</label>'
-      + '<div class="hint">資料のPDFやスクリーンショットをClaudeとのチャットに貼り、「Drill IQ用のJSONにして」と頼むと、各項目に振り分けたJSONが返ってきます。それをここに貼り付けて、内容を確認してから取り込めます。</div>'
+      + '<div class="hint">資料のPDFやスクリーンショットをClaudeとのチャットに貼り、「Drill IQ用のJSONにして」と頼むと、各項目に振り分けたJSONが返ってきます。それをここに貼り付けて、内容を確認してから取り込めます。取り込んだ内容はそのままクラウドへ同期されます。</div>'
       + '<textarea id="ai-json" class="field" rows="5" placeholder=\'ここにJSONを貼り付け（例：{"menus":[...],"principles":[...]} または [ {...}, {...} ]）\' style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px"></textarea>'
       + '<button class="btn btn-acc btn-block" data-act="ai-preview" style="margin-top:10px">内容を確認する</button>'
       + '<div id="ai-preview" style="margin-top:12px"></div></div>'
 
-      + '<div class="card"><label class="lbl">データの読み込み（バックアップ）</label>'
-      + '<div class="hint">書き出した data.json を読み込めます。統合か置き換えかを選べます。</div>'
+      + '<div class="card"><label class="lbl">バックアップ</label>'
+      + '<div class="hint">念のためのバックアップとして、全データを data.json ファイルに書き出し／読み込みできます。読み込んだ内容もクラウドへ同期されます。</div>'
       + '<input type="file" id="imp-file" accept=".json,application/json" style="display:none">'
-      + '<button class="btn btn-block" data-act="adm-import" style="margin-top:12px">⬆ JSONファイルを読み込む</button></div>'
-
-      + '<div class="card"><label class="lbl">管理パスコードの変更</label>'
-      + '<input id="new-pass" class="field" type="text" placeholder="新しいパスコード（4文字以上）" autocomplete="off">'
-      + '<button class="btn btn-block" data-act="adm-pass-save" style="margin-top:10px">変更する</button>'
-      + '<div class="hint" style="margin-top:8px">※この端末のブラウザに保存されます（簡易的な保護です）。</div></div>'
+      + '<button class="btn btn-block" data-act="adm-export" style="margin-top:12px">⬇ data.json を書き出す</button>'
+      + '<button class="btn btn-block" data-act="adm-import" style="margin-top:8px">⬆ JSONファイルを読み込む</button></div>'
 
       + '<div class="card">'
-      + '<button class="btn btn-block" data-act="adm-logout">ログアウト</button>'
-      + '<button class="btn btn-block btn-danger" data-act="adm-reset" style="margin-top:10px">⚠ すべてのデータを初期状態に戻す</button>'
-      + '</div>'
+      + '<button class="btn btn-block" data-act="google-logout">ログアウト</button>'
+      + '<button class="btn btn-block btn-danger" data-act="adm-reset" style="margin-top:10px">⚠ この端末のデータを初期状態に戻す</button>'
+      + '<div class="hint" style="margin-top:8px">※「初期化」はこの端末の表示をリセットするものです。クラウド上のデータは次回ログイン時に再度読み込まれます。</div></div>'
 
       + '<div class="hint" style="text-align:center;margin-top:4px">Drill IQ v' + APP_VER + '</div>';
   }
@@ -1702,6 +1893,7 @@ function saveMenu(){
 
   Store.menus = Store.upsert(Store.menus, [m]);
   Store.save();
+  Sync.push();
   closeModal();
   renderAdmin();
   toast(id ? '更新しました' : '追加しました');
@@ -1714,6 +1906,7 @@ function delMenu(id){
   Store.menus = Store.menus.filter(x => x.id !== id);
   Store.bookmarks.delete(id);
   Store.save(); Store.saveBM();
+  Sync.push();
   renderAdmin();
   toast('削除しました');
 }
@@ -1757,6 +1950,7 @@ function savePrin(){
 
   Store.principles = Store.upsert(Store.principles, [p]);
   Store.save();
+  Sync.push();
   closeModal();
   renderAdmin();
   toast(id ? '更新しました' : '追加しました');
@@ -1769,6 +1963,7 @@ function delPrin(id){
   Store.principles = Store.principles.filter(x => x.id !== id);
   Store.bookmarks.delete(id);
   Store.save(); Store.saveBM();
+  Sync.push();
   renderAdmin();
   toast('削除しました');
 }
@@ -1808,6 +2003,7 @@ function importFile(input){
         if (Array.isArray(j.principles)) Store.principles = j.principles;
       }
       Store.save();
+      Sync.push();
       renderAdmin();
       toast('読み込みました（メニュー' + Store.menus.length + '件・原則' + Store.principles.length + '件）');
     } catch (e) {
@@ -1976,6 +2172,7 @@ function aiCommit(){
   if (menus.length) Store.menus      = Store.upsert(Store.menus, menus);
   if (prins.length) Store.principles = Store.upsert(Store.principles, prins);
   Store.save();
+  Sync.push();
   AI_STAGE = [];
   $('#ai-json').value = '';
   renderAdmin();
@@ -1989,16 +2186,8 @@ function aiClear(){
   if (box) box.innerHTML = '';
 }
 
-function savePass(){
-  const v = $('#new-pass').value.trim();
-  if (v.length < 4){ toast('パスコードは4文字以上にしてください'); return; }
-  localStorage.setItem(LS.pass, v);
-  $('#new-pass').value = '';
-  toast('パスコードを変更しました');
-}
-
 function resetAll(){
-  if (!confirm('保存されているデータをすべて削除し、初期データに戻します。よろしいですか？')) return;
+  if (!confirm('この端末の表示を初期データに戻します。クラウドにログインすると再び同期されます。よろしいですか？')) return;
   [LS.menus, LS.prin, LS.seedv, LS.remotev, LS.bm].forEach(k => localStorage.removeItem(k));
   location.reload();
 }
@@ -2042,7 +2231,7 @@ function bindEvents(){
       case 'swap':          swapBlock(+el.dataset.bi); break;
       case 'copy-plan':     copyPlanText(); break;
       case 'regen-plan':    onGenPlan(); break;
-      case 'admin-login':   adminLogin(); break;
+      case 'google-login':  Sync.login(); break;
       case 'adm-new-menu':  openMenuForm(null); break;
       case 'adm-edit-menu': openMenuForm(el.dataset.id); break;
       case 'adm-del-menu':  delMenu(el.dataset.id); break;
@@ -2053,12 +2242,11 @@ function bindEvents(){
       case 'save-prin':     savePrin(); break;
       case 'adm-export':    exportData(); break;
       case 'adm-import':    { const fi = $('#imp-file'); if (fi) fi.click(); } break;
-      case 'adm-pass-save': savePass(); break;
       case 'ai-preview':    aiPreview(); break;
       case 'ai-edit':       aiEdit(+el.dataset.i); break;
       case 'ai-commit':     aiCommit(); break;
       case 'ai-clear':      aiClear(); break;
-      case 'adm-logout':    ADMIN.ok = false; renderAdmin(); break;
+      case 'google-logout': Sync.logout(); break;
       case 'adm-reset':     resetAll(); break;
     }
   });
@@ -2072,7 +2260,6 @@ function bindEvents(){
   });
 
   $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch($('#q').value); });
-  $('#admin-pass').addEventListener('keydown', e => { if (e.key === 'Enter') adminLogin(); });
   $('#book-q').addEventListener('input', () => { BOOK.q = $('#book-q').value; renderBook(); });
   $('#modal').addEventListener('click', e => { if (e.target === $('#modal')) closeModal(); });
 }
@@ -2091,7 +2278,10 @@ function init(){
 
   bindEvents();
 
-  /* data.json による全端末更新（リポジトリに置いた場合のみ） */
+  /* Firebase（Googleログイン＋クラウド同期）を初期化 */
+  try { Sync.init(); } catch (e) { renderAuth(); }
+
+  /* data.json による更新（リポジトリに data.json を置いた場合のみ・任意） */
   fetch('./data.json', { cache: 'no-store' })
     .then(r => (r.ok ? r.json() : null))
     .then(j => {
