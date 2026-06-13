@@ -240,6 +240,12 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .principle .p-ttl{display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:800;margin-bottom:4px}
 .principle .p-ttl::before{content:"§";color:var(--acc);font-weight:900}
 .principle .p-body{font-size:13.5px;line-height:1.8;color:#C9D5E2}
+.defcard{background:linear-gradient(135deg,#161226,#120F1F);border:1px solid #2A2342;border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;transition:transform .06s}
+.defcard:active{transform:scale(.99)}
+.defcard .df-term{display:flex;align-items:baseline;gap:6px;font-size:15px;font-weight:900;margin-bottom:5px;color:#E7E0FF}
+.defcard .df-term::before{content:"“";color:#A78BFA;font-weight:900;font-size:18px;line-height:0}
+.defcard .df-term .df-q{font-size:11.5px;font-weight:700;color:#9C8CC9}
+.defcard .df-body{font-size:13.5px;line-height:1.8;color:#CFC7E6}
 .empty{
   text-align:center;padding:38px 20px;color:var(--sub);
   border:1.5px dashed var(--line2);border-radius:var(--radius);margin-bottom:14px;
@@ -277,8 +283,8 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .plan-acts .btn{flex:1}
 
 /* ---------- 教科書 ---------- */
-.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:0;background:var(--bg2);border:1px solid var(--line2);border-radius:11px;padding:3px;margin-bottom:14px}
-.seg button{padding:9px 6px;font-size:12.5px;font-weight:800;border-radius:8px;color:var(--sub);transition:all .15s}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:0;background:var(--bg2);border:1px solid var(--line2);border-radius:11px;padding:3px;margin-bottom:14px}
+.seg button{padding:9px 4px;font-size:12px;font-weight:800;border-radius:8px;color:var(--sub);transition:all .15s;white-space:nowrap}
 .seg button.on{background:var(--panel2);color:var(--text);box-shadow:0 1px 6px #0006}
 .bookbar{display:flex;gap:8px;margin-bottom:12px}
 .bookbar .field{flex:1;padding:10px 14px;font-size:16px}
@@ -317,7 +323,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .adm-row .ar-acts{flex:none;display:flex;gap:6px}
 .adm-add{position:sticky;bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);z-index:5;display:flex;justify-content:flex-end;pointer-events:none;margin-top:14px}
 .adm-add .btn{pointer-events:auto;box-shadow:0 6px 24px #000A;border-radius:999px;padding:13px 22px}
-.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.statgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px}
 .statgrid .st{background:var(--bg2);border:1px solid var(--line);border-radius:11px;padding:12px 8px;text-align:center}
 .statgrid .st .sv{font-size:21px;font-weight:900;color:var(--acc);font-variant-numeric:tabular-nums}
 .statgrid .st .sl{font-size:10.5px;color:var(--faint);font-weight:700;letter-spacing:.08em;margin-top:2px}
@@ -366,6 +372,16 @@ label.lbl .req{color:var(--acc);margin-left:3px}
   body{font-size:15.5px}
   .kv{grid-template-columns:repeat(4,1fr)}
   main{padding-top:22px}
+  /* 教科書一覧：iPad・Macでは2列で並べる */
+  #book-list{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+  #book-list>.mcard,#book-list>.defcard,#book-list>.principle,#book-list>.pcard{margin-bottom:0}
+  #book-list>.h-eyebrow{grid-column:1 / -1}
+  #book-list>.empty{grid-column:1 / -1}
+  /* 検索結果の関連原則なども広めに */
+  .plan-acts .btn{font-size:14px}
+}
+@media(min-width:1024px){
+  #book-list{grid-template-columns:1fr 1fr 1fr}
 }
 </style>
 </head>
@@ -439,9 +455,10 @@ label.lbl .req{color:var(--acc);margin-left:3px}
     <div class="h-desc">登録されている練習メニューと原則を一覧できます。</div>
 
     <div class="seg" id="book-seg">
-      <button data-mode="menus" class="on">練習メニュー</button>
+      <button data-mode="menus" class="on">練習</button>
       <button data-mode="principles">原則</button>
-      <button data-mode="bookmarks">★ ブックマーク</button>
+      <button data-mode="definitions">定義</button>
+      <button data-mode="bookmarks">★保存</button>
     </div>
 
     <div class="bookbar">
@@ -473,8 +490,9 @@ label.lbl .req{color:var(--acc);margin-left:3px}
     <div id="admin-panel" style="display:none">
       <div id="sync-bar" class="sync-bar"></div>
       <div class="seg" id="adm-seg">
-        <button data-amode="menus" class="on">練習メニュー</button>
+        <button data-amode="menus" class="on">練習</button>
         <button data-amode="principles">原則</button>
+        <button data-amode="definitions">定義</button>
         <button data-amode="data">データ</button>
       </div>
       <div id="admin-body"></div>
@@ -511,7 +529,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
    定数・辞書
    ============================================================ */
 const APP_VER = '1.0.0';
-const SEED_VERSION = 1;            // 初期データのバージョン（data.json運用時はそちらが優先）
+const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
 const CATS = ['ドリブル','パス','シュート','リバウンド','ディフェンス','トランジション','1on1','2on2','3on3','チームオフェンス','チームディフェンス','体力向上'];
@@ -845,6 +863,30 @@ const SEED_PRINCIPLES = [
 }
 ];
 
+/* 定義（良し悪しの基準・チームで揃えたい考え方）。原則とは別タブで管理 */
+const SEED_DEFINITIONS = [
+{
+ id:'df-1', term:'いいパス', cat:'パス',
+ body:'受け手が次の動作（シュート・ドライブ・次のパス）にそのまま移れる高さ・速さ・タイミングで届くパス。基本は受け手の利き手側、もらってすぐ仕掛けられる位置へ。強さは「速いが捕れる」が基準で、ふわっと浮かせたり、足元・背中側に出すのは悪いパス。状況を見て、いつ・誰に出すかを判断したうえでのパスを「いいパス」とする。',
+ kw:['パス','いいパス','タイミング','利き手','判断']
+},
+{
+ id:'df-2', term:'いいシュートセレクション', cat:'シュート',
+ body:'「自分が高確率で決められる」かつ「チームとしてそれ以上に良い選択肢が無い」ときのシュート。ノーマークか軽いプレッシャー、自分の得意なエリア・距離、リバウンドに人が行ける状況、時間帯（ショットクロック）に合っているかで判断する。崩れていない・人数をかけていない早すぎる難しいシュートは悪いセレクション。',
+ kw:['シュートセレクション','確率','ノーマーク','判断','得意エリア']
+},
+{
+ id:'df-3', term:'いいスクリーン', cat:'チームオフェンス',
+ body:'相手の進路に対して体を止め、ぶつかっても動かない安定した姿勢でセットしたスクリーン。スクリナーは脚を肩幅に開き、両手で体の中心を守って静止する（動くとオフェンスファウル）。角度（守備の逃げ道を消す向き）とタイミング（使い手が来る直前にセット）が合っていることも条件。セット後はロールかポップで自分も得点機会を作る。',
+ kw:['スクリーン','スクリナー','角度','タイミング','ピックアンドロール']
+},
+{
+ id:'df-4', term:'いいディフェンス姿勢', cat:'ディフェンス',
+ body:'重心を低く保ち、足は肩幅より広く、つま先と膝が同じ方向を向いたスタンス。手は使いすぎず（ファウルとバランス崩れの原因）、胸と足で間合いを作る。目線はマークマンの腰・みぞおち（フェイクに釣られない部位）に置く。抜かれない間合いを保ちつつ、ヘルプとボールも視野に入れ続けられている状態を「いい姿勢」とする。',
+ kw:['ディフェンス姿勢','スタンス','重心','間合い','ピストル']
+}
+];
+
 /* ============================================================
    ユーティリティ
    ============================================================ */
@@ -893,6 +935,7 @@ function toast(msg){
 const LS = {
   menus  : 'drilliq_menus',
   prin   : 'drilliq_principles',
+  defs   : 'drilliq_definitions',
   seedv  : 'drilliq_seedv',
   remotev: 'drilliq_remotev',
   bm     : 'drilliq_bookmarks',
@@ -900,7 +943,7 @@ const LS = {
 };
 
 const Store = {
-  menus: [], principles: [], bookmarks: new Set(),
+  menus: [], principles: [], definitions: [], bookmarks: new Set(),
 
   upsert(base, incoming){
     const map = new Map((base || []).map(x => [x.id, x]));
@@ -909,16 +952,19 @@ const Store = {
   },
 
   load(){
-    let m = null, p = null;
+    let m = null, p = null, d = null;
     try { m = JSON.parse(localStorage.getItem(LS.menus) || 'null'); } catch (e) {}
     try { p = JSON.parse(localStorage.getItem(LS.prin)  || 'null'); } catch (e) {}
-    this.menus      = Array.isArray(m) ? m : null;
-    this.principles = Array.isArray(p) ? p : null;
+    try { d = JSON.parse(localStorage.getItem(LS.defs)  || 'null'); } catch (e) {}
+    this.menus       = Array.isArray(m) ? m : null;
+    this.principles  = Array.isArray(p) ? p : null;
+    this.definitions = Array.isArray(d) ? d : null;
 
     const sv = +(localStorage.getItem(LS.seedv) || 0);
-    if (!this.menus || !this.principles || sv < SEED_VERSION){
-      this.menus      = this.upsert(this.menus      || [], SEED_MENUS);
-      this.principles = this.upsert(this.principles || [], SEED_PRINCIPLES);
+    if (!this.menus || !this.principles || !this.definitions || sv < SEED_VERSION){
+      this.menus       = this.upsert(this.menus       || [], SEED_MENUS);
+      this.principles  = this.upsert(this.principles  || [], SEED_PRINCIPLES);
+      this.definitions = this.upsert(this.definitions || [], SEED_DEFINITIONS);
       localStorage.setItem(LS.seedv, String(SEED_VERSION));
       this.save();
     }
@@ -930,6 +976,7 @@ const Store = {
     try {
       localStorage.setItem(LS.menus, JSON.stringify(this.menus));
       localStorage.setItem(LS.prin,  JSON.stringify(this.principles));
+      localStorage.setItem(LS.defs,  JSON.stringify(this.definitions));
     } catch (e) { toast('保存に失敗しました（容量不足の可能性）'); }
   },
 
@@ -940,8 +987,9 @@ const Store = {
     if (!remote || typeof remote.version !== 'number') return false;
     const cur = +(localStorage.getItem(LS.remotev) || 0);
     if (remote.version <= cur) return false;
-    if (Array.isArray(remote.menus))      this.menus      = this.upsert(this.menus, remote.menus);
-    if (Array.isArray(remote.principles)) this.principles = this.upsert(this.principles, remote.principles);
+    if (Array.isArray(remote.menus))       this.menus       = this.upsert(this.menus, remote.menus);
+    if (Array.isArray(remote.principles))  this.principles  = this.upsert(this.principles, remote.principles);
+    if (Array.isArray(remote.definitions)) this.definitions = this.upsert(this.definitions, remote.definitions);
     localStorage.setItem(LS.remotev, String(remote.version));
     this.save();
     return true;
@@ -949,6 +997,7 @@ const Store = {
 
   menu(id){ return this.menus.find(x => x.id === id); },
   principle(id){ return this.principles.find(x => x.id === id); },
+  definition(id){ return this.definitions.find(x => x.id === id); },
   pass(){ return localStorage.getItem(LS.pass) || DEFAULT_PASS; }
 };
 
@@ -1035,8 +1084,9 @@ const Sync = {
       const d = snap.data();
       if (!d){ this.setStat(); return; }
 
-      if (Array.isArray(d.menus))      Store.menus      = d.menus;
-      if (Array.isArray(d.principles)) Store.principles = d.principles;
+      if (Array.isArray(d.menus))       Store.menus       = d.menus;
+      if (Array.isArray(d.principles))  Store.principles  = d.principles;
+      if (Array.isArray(d.definitions)) Store.definitions = d.definitions;
       localStorage.setItem(LS.remotev, String(+d.version || 0));
       Store.save();
       refreshViews();
@@ -1057,6 +1107,7 @@ const Sync = {
       version,
       menus: Store.menus,
       principles: Store.principles,
+      definitions: Store.definitions,
       updatedBy: (this.user && this.user.email) || '',
       updatedAt: new Date().toISOString()
     }).then(() => {
@@ -1223,6 +1274,14 @@ function principleCard(p){
        + '</div>';
 }
 
+function definitionCard(d){
+  return '<div class="defcard" data-act="open-def" data-id="' + esc(d.id) + '">'
+       +   '<div class="df-term">' + esc(d.term) + '<span class="df-q">とは</span></div>'
+       +   '<div class="df-body">' + esc(d.body) + '</div>'
+       +   (d.cat ? '<div style="margin-top:8px">' + catChip(d.cat) + '</div>' : '')
+       + '</div>';
+}
+
 /* ============================================================
    モーダル
    ============================================================ */
@@ -1248,6 +1307,13 @@ function openPrinModal(id){
   openModal('原則', '<div class="principle" style="margin:0"><div class="p-ttl">' + esc(p.title) + '</div>'
     + '<div class="p-body">' + esc(p.body) + '</div>'
     + '<div style="margin-top:10px">' + catChip(p.cat) + '</div></div>');
+}
+function openDefModal(id){
+  const d = Store.definition(id);
+  if (!d) return;
+  openModal('定義', '<div class="defcard" style="margin:0"><div class="df-term">' + esc(d.term) + '<span class="df-q">とは</span></div>'
+    + '<div class="df-body">' + esc(d.body) + '</div>'
+    + (d.cat ? '<div style="margin-top:10px">' + catChip(d.cat) + '</div>' : '') + '</div>');
 }
 
 /* ============================================================
@@ -1389,6 +1455,28 @@ function scorePrinciple(p, it, qBi){
   return s;
 }
 
+function scoreDefinition(d, it, qBi){
+  let s = 0;
+  const kwN = (d.kw || []).map(norm);
+  const tN  = norm(d.term);
+  const bN  = norm(d.body || '');
+
+  it.kws.forEach(k => {
+    const kn = norm(k);
+    if (kwN.some(x => x.includes(kn) || kn.includes(x)) || tN.includes(kn)) s += 10;
+  });
+  if (it.cats.includes(d.cat)) s += 5;
+  it.terms.forEach(t => {
+    if (tN.includes(t)) s += 10;          // 用語そのものの一致は強く効かせる
+    else if (kwN.some(x => x.includes(t))) s += 8;
+    else if (bN.includes(t)) s += 3;
+  });
+  const docBi = bigrams(d.term + ' ' + (d.kw || []).join(' '));
+  let b = 0; qBi.forEach(g => { if (docBi.has(g)) b++; });
+  s += Math.min(b, 8);
+  return s;
+}
+
 /* ============================================================
    検索の実行と表示
    ============================================================ */
@@ -1442,16 +1530,33 @@ function renderSearch(q){
     .sort((a, b) => b.s - a.s)
     .slice(0, 2);
 
+  const defs = Store.definitions
+    .map(d => ({ d, s: scoreDefinition(d, it, qBi) }))
+    .filter(x => x.s >= 10)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, 2);
+
   let h = intentBox(it, list.length, fallback);
 
   if (!list.length){
-    h += '<div class="empty">'
-       +   '<div class="e-ic">🏀</div>'
-       +   '<div class="e-t">見つかりませんでした</div>'
-       +   '<div class="e-d">言い方を変えるか（例：「速攻」「ゾーン対策」「2人 基礎」）、<br>管理画面から練習メニューを追加してください。</div>'
-       + '</div>';
+    /* 練習が無くても、定義・原則が当たっていれば「見つからない」とは出さない */
+    if (!defs.length && !prins.length){
+      h += '<div class="empty">'
+         +   '<div class="e-ic">🏀</div>'
+         +   '<div class="e-t">見つかりませんでした</div>'
+         +   '<div class="e-d">言い方を変えるか（例：「速攻」「ゾーン対策」「2人 基礎」）、<br>管理画面から練習メニューを追加してください。</div>'
+         + '</div>';
+    }
   } else {
     h += list.map((x, i) => resultCard(x.m, i + 1)).join('');
+  }
+
+  if (defs.length){
+    h += '<div class="relsec">'
+       +   '<div class="h-eyebrow">DEFINITION</div>'
+       +   '<div class="h-title" style="font-size:16px">関連する定義</div>'
+       +   defs.map(x => definitionCard(x.d)).join('')
+       + '</div>';
   }
 
   if (prins.length){
@@ -1709,6 +1814,10 @@ const matchPrin = (p, q) =>
   norm(p.title).includes(q) || norm(p.body).includes(q) ||
   norm(p.cat).includes(q) || (p.kw || []).some(k => norm(k).includes(q));
 
+const matchDef = (d, q) =>
+  norm(d.term).includes(q) || norm(d.body).includes(q) ||
+  norm(d.cat).includes(q) || (d.kw || []).some(k => norm(k).includes(q));
+
 function mcardHTML(m){
   const on = Store.bookmarks.has(m.id);
   return '<div class="mcard" data-act="open-menu" data-id="' + esc(m.id) + '">'
@@ -1746,6 +1855,13 @@ function renderBook(){
       (BOOK.cat === 'all' || p.cat === BOOK.cat) && (!q || matchPrin(p, q)));
     n = list.length;
     html = list.map(principleCard).join('');
+  }
+  else if (BOOK.mode === 'definitions'){
+    const list = sortByCat(Store.definitions.filter(d =>
+      (BOOK.cat === 'all' || d.cat === BOOK.cat) && (!q || matchDef(d, q))).map(d =>
+        Object.assign({ name: d.term }, d)));   // sortByCat用にnameを付与
+    n = list.length;
+    html = list.map(definitionCard).join('');
   }
   else {
     const ms = Store.menus.filter(m => Store.bookmarks.has(m.id) && (!q || matchMenu(m, q)));
@@ -1814,12 +1930,24 @@ function renderAdmin(){
       + '</div></div>').join('')
       || '<div class="empty"><div class="e-t">原則がありません</div></div>';
   }
+  else if (ADMIN.mode === 'definitions'){
+    add.innerHTML = '<button class="btn btn-acc btn-block" data-act="adm-new-def">＋ 定義を追加</button>';
+    body.innerHTML = Store.definitions.map(d =>
+      '<div class="adm-row"><div class="ar-main">'
+      + '<div class="ar-name">' + esc(d.term) + '<span style="color:var(--faint);font-weight:600">　とは</span></div>'
+      + '<div class="ar-sub">' + esc(d.cat || '（カテゴリーなし）') + '</div></div>'
+      + '<div class="ar-acts">'
+      + '<button class="btn btn-ghost btn-sm" data-act="adm-edit-def" data-id="' + esc(d.id) + '">編集</button>'
+      + '<button class="btn btn-ghost btn-sm btn-danger" data-act="adm-del-def" data-id="' + esc(d.id) + '">削除</button>'
+      + '</div></div>').join('')
+      || '<div class="empty"><div class="e-t">定義がありません</div></div>';
+  }
   else {
     add.innerHTML = '';
     const st = (v, l) => '<div class="st"><div class="sv">' + v + '</div><div class="sl">' + l + '</div></div>';
     body.innerHTML =
       '<div class="statgrid">'
-      + st(Store.menus.length, '練習メニュー') + st(Store.principles.length, '原則') + st(Store.bookmarks.size, 'ブックマーク')
+      + st(Store.menus.length, '練習メニュー') + st(Store.principles.length, '原則') + st(Store.definitions.length, '定義') + st(Store.bookmarks.size, 'ブックマーク')
       + '</div>'
 
       + '<div class="card"><label class="lbl">クラウド同期について</label>'
@@ -1995,13 +2123,71 @@ function delPrin(id){
   toast('削除しました');
 }
 
+function openDefForm(id){
+  let d;
+  if (id && id.indexOf('__ai_') === 0){ d = Store._aiTmp || {}; Store._aiEditIdx = +id.slice(5); }
+  else { d = id ? (Store.definition(id) || {}) : {}; Store._aiEditIdx = -1; }
+  const catOpts = '<option value=""' + (!d.cat ? ' selected' : '') + '>（カテゴリーなし）</option>'
+    + CATS.map(c => '<option' + (d.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
+  const h = '<input type="hidden" id="f-did" value="' + esc(d.id || '') + '">'
+    + fld('用語・見出し <span class="req">必須</span>', '<input id="f-dterm" class="field" value="' + esc(d.term || '') + '" placeholder="例：いいパス（「〜とは」が自動で付きます）">')
+    + fld('カテゴリー（任意）', '<select id="f-dcat" class="field">' + catOpts + '</select>')
+    + fld('定義・説明 <span class="req">必須</span>', '<textarea id="f-dbody" class="field" rows="6" placeholder="「〜とは…である」に続く形で、チームで揃えたい基準・考え方を書く">' + esc(d.body || '') + '</textarea>')
+    + fld('検索キーワード（カンマ区切り）', '<input id="f-dkw" class="field" value="' + esc((d.kw || []).join(', ')) + '" placeholder="例：パス, タイミング, 判断">')
+    + '<button class="btn btn-acc btn-block" data-act="save-def">保存する</button>';
+  openModal(id ? '定義を編集' : '定義を追加', h);
+}
+
+function saveDef(){
+  const id   = $('#f-did').value.trim();
+  const term = $('#f-dterm').value.trim();
+  const body = $('#f-dbody').value.trim();
+  if (!term){ toast('用語・見出しを入力してください'); return; }
+  if (!body){ toast('定義・説明を入力してください'); return; }
+  const d = {
+    id: id || uid('udf'),
+    term,
+    cat: $('#f-dcat').value || '',
+    body,
+    kw: $('#f-dkw').value.split(/[、,\n]+/).map(s => s.trim()).filter(Boolean)
+  };
+
+  if (Store._aiEditIdx >= 0 && AI_STAGE[Store._aiEditIdx]){
+    AI_STAGE[Store._aiEditIdx] = { kind: 'definition', obj: d, use: true };
+    Store._aiEditIdx = -1;
+    closeModal();
+    renderAIPreview();
+    toast('プレビューを更新しました');
+    return;
+  }
+
+  Store.definitions = Store.upsert(Store.definitions, [d]);
+  Store.save();
+  Sync.push();
+  closeModal();
+  renderAdmin();
+  toast(id ? '更新しました' : '追加しました');
+}
+
+function delDef(id){
+  const d = Store.definition(id);
+  if (!d) return;
+  if (!confirm('「' + d.term + '」を削除しますか？')) return;
+  Store.definitions = Store.definitions.filter(x => x.id !== id);
+  Store.save();
+  Sync.push();
+  renderAdmin();
+  toast('削除しました');
+}
+
 /* ----- データ入出力 ----- */
 function exportData(){
   const data = {
     version: Math.floor(Date.now() / 1000),
     exportedAt: new Date().toISOString(),
     menus: Store.menus,
-    principles: Store.principles
+    principles: Store.principles,
+    definitions: Store.definitions
   };
   const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -2020,19 +2206,21 @@ function importFile(input){
   r.onload = () => {
     try {
       const j = JSON.parse(r.result);
-      if (!Array.isArray(j.menus) && !Array.isArray(j.principles)) throw new Error('format');
+      if (!Array.isArray(j.menus) && !Array.isArray(j.principles) && !Array.isArray(j.definitions)) throw new Error('format');
       const merge = confirm('既存のデータに統合（マージ）しますか？\n［キャンセル］＝読み込んだ内容で置き換えます');
       if (merge){
-        if (Array.isArray(j.menus))      Store.menus      = Store.upsert(Store.menus, j.menus);
-        if (Array.isArray(j.principles)) Store.principles = Store.upsert(Store.principles, j.principles);
+        if (Array.isArray(j.menus))       Store.menus       = Store.upsert(Store.menus, j.menus);
+        if (Array.isArray(j.principles))  Store.principles  = Store.upsert(Store.principles, j.principles);
+        if (Array.isArray(j.definitions)) Store.definitions = Store.upsert(Store.definitions, j.definitions);
       } else {
-        if (Array.isArray(j.menus))      Store.menus      = j.menus;
-        if (Array.isArray(j.principles)) Store.principles = j.principles;
+        if (Array.isArray(j.menus))       Store.menus       = j.menus;
+        if (Array.isArray(j.principles))  Store.principles  = j.principles;
+        if (Array.isArray(j.definitions)) Store.definitions = j.definitions;
       }
       Store.save();
       Sync.push();
       renderAdmin();
-      toast('読み込みました（メニュー' + Store.menus.length + '件・原則' + Store.principles.length + '件）');
+      toast('読み込みました（メニュー' + Store.menus.length + '件・原則' + Store.principles.length + '件・定義' + Store.definitions.length + '件）');
     } catch (e) {
       toast('読み込めませんでした（JSON形式を確認してください）');
     }
@@ -2056,12 +2244,14 @@ function _splitText(v){
     .map(s => s.trim()).filter(Boolean);
 }
 
-/* レコードがメニューか原則かを推定 */
+/* レコードがメニュー / 原則 / 定義 のどれかを推定 */
 function classifyRecord(o){
-  if (o.kind === 'menu' || o.kind === 'principle') return o.kind;
-  if (o.type === 'menu' || o.type === 'principle') return o.type;
-  const hasMenuFields = o.desc || o.purpose || o.points || o.mistakes || o.time || o.cat || o.category;
-  const hasPrinFields = (o.body || o.principle) && !hasMenuFields;
+  if (o.kind === 'menu' || o.kind === 'principle' || o.kind === 'definition') return o.kind;
+  if (o.type === 'menu' || o.type === 'principle' || o.type === 'definition') return o.type;
+  /* 「用語＋定義」らしさ（termや定義キーがある／〜とは見出し） */
+  if (o.term || o.用語 || o.定義 || o.見出し) return 'definition';
+  const hasMenuFields = o.desc || o.purpose || o.points || o.mistakes || o.time || o.category || o.練習名 || o.実施方法;
+  const hasPrinFields = (o.body || o.principle || o.内容) && !hasMenuFields;
   if (hasPrinFields) return 'principle';
   return 'menu';
 }
@@ -2110,7 +2300,18 @@ function normalizePrin(o){
   };
 }
 
-/* 貼り付けJSONを配列に展開（{menus,principles} / 単一配列 / 単一オブジェクト いずれも対応） */
+function normalizeDef(o){
+  const cRaw = o.cat || o.category || o.カテゴリー || '';
+  return {
+    id: o.id || uid('adf'),
+    term: String(o.term || o.用語 || o.見出し || o.title || o.name || '用語').trim().replace(/とは$/, ''),
+    cat: cRaw ? _normCat(cRaw) : '',     // 定義はカテゴリーなしも許容
+    body: String(o.body || o.定義 || o.意味 || o.説明 || o.desc || o.description || '').trim(),
+    kw: _arr(o.kw || o.keywords || o.キーワード)
+  };
+}
+
+/* 貼り付けJSONを配列に展開（{menus,principles,definitions} / 単一配列 / 単一オブジェクト いずれも対応） */
 function parseAIInput(text){
   const j = JSON.parse(text);
   const out = [];
@@ -2120,6 +2321,7 @@ function parseAIInput(text){
     let matched = false;
     if (Array.isArray(j.menus)){ matched = true; j.menus.forEach(o => o && out.push(Object.assign({ kind: 'menu' }, o))); }
     if (Array.isArray(j.principles)){ matched = true; j.principles.forEach(o => o && out.push(Object.assign({ kind: 'principle' }, o))); }
+    if (Array.isArray(j.definitions)){ matched = true; j.definitions.forEach(o => o && out.push(Object.assign({ kind: 'definition' }, o))); }
     if (!matched) out.push(j);
   }
   return out;
@@ -2140,7 +2342,11 @@ function aiPreview(){
 
   AI_STAGE = recs.map(o => {
     const kind = classifyRecord(o);
-    return { kind, obj: kind === 'menu' ? normalizeMenu(o) : normalizePrin(o), use: true };
+    let obj;
+    if (kind === 'menu') obj = normalizeMenu(o);
+    else if (kind === 'definition') obj = normalizeDef(o);
+    else obj = normalizePrin(o);
+    return { kind, obj, use: true };
   });
 
   renderAIPreview();
@@ -2150,22 +2356,31 @@ function renderAIPreview(){
   const box = $('#ai-preview');
   const nMenu = AI_STAGE.filter(s => s.kind === 'menu').length;
   const nPrin = AI_STAGE.filter(s => s.kind === 'principle').length;
+  const nDef  = AI_STAGE.filter(s => s.kind === 'definition').length;
 
-  let h = '<div class="hint" style="margin-bottom:8px">読み取り結果：練習メニュー <b>' + nMenu + '件</b>／原則 <b>' + nPrin + '件</b>。取り込むものにチェックを入れてください。</div>';
+  let h = '<div class="hint" style="margin-bottom:8px">読み取り結果：練習メニュー <b>' + nMenu + '件</b>／原則 <b>' + nPrin + '件</b>／定義 <b>' + nDef + '件</b>。取り込むものにチェックを入れてください。</div>';
 
   h += AI_STAGE.map((s, i) => {
     const o = s.obj;
-    const badge = s.kind === 'menu'
-      ? catChip(o.cat) + '<span class="tbadge">' + o.time + '<small>分</small></span><span class="tbadge">' + esc(peopleLabel(o)) + '</span>'
-      : '<span class="catchip" style="color:#A78BFA;background:#A78BFA1f;border:1px solid #A78BFA4d">原則</span>' + catChip(o.cat);
-    const sub = s.kind === 'menu'
-      ? esc(o.purpose || o.desc || '（説明なし）')
-      : esc(o.body || '（内容なし）');
+    let badge, sub, title;
+    if (s.kind === 'menu'){
+      badge = catChip(o.cat) + '<span class="tbadge">' + o.time + '<small>分</small></span><span class="tbadge">' + esc(peopleLabel(o)) + '</span>';
+      sub = esc(o.purpose || o.desc || '（説明なし）');
+      title = esc(o.name);
+    } else if (s.kind === 'definition'){
+      badge = '<span class="catchip" style="color:#A78BFA;background:#A78BFA1f;border:1px solid #A78BFA4d">定義</span>' + (o.cat ? catChip(o.cat) : '');
+      sub = esc(o.body || '（内容なし）');
+      title = esc(o.term) + '<span style="color:var(--faint);font-weight:600">　とは</span>';
+    } else {
+      badge = '<span class="catchip" style="color:#7FB3FF;background:#7FB3FF1f;border:1px solid #7FB3FF4d">原則</span>' + catChip(o.cat);
+      sub = esc(o.body || '（内容なし）');
+      title = esc(o.title);
+    }
     return '<div class="adm-row" style="align-items:flex-start">'
       + '<label style="display:flex;gap:10px;flex:1;cursor:pointer">'
       +   '<input type="checkbox" data-ai-chk="' + i + '"' + (s.use ? ' checked' : '') + ' style="margin-top:3px;width:18px;height:18px;accent-color:var(--acc)">'
-      +   '<div class="ar-main"><div class="ar-name">' + esc(s.kind === 'menu' ? o.name : o.title) + '</div>'
-      +     '<div class="ar-sub" style="margin:3px 0 5px">' + sub + '</div>'
+      +   '<div class="ar-main"><div class="ar-name">' + title + '</div>'
+      +     '<div class="ar-sub" style="margin:3px 0 5px;white-space:normal">' + sub + '</div>'
       +     '<div class="mc-meta">' + badge + '</div></div>'
       + '</label>'
       + '<div class="ar-acts"><button class="btn btn-ghost btn-sm" data-act="ai-edit" data-i="' + i + '">編集</button></div>'
@@ -2178,17 +2393,14 @@ function renderAIPreview(){
   box.innerHTML = h;
 }
 
-/* プレビュー項目を既存のメニュー/原則フォームで微修正 */
+/* プレビュー項目を既存のフォームで微修正 */
 function aiEdit(i){
   const s = AI_STAGE[i];
   if (!s) return;
-  if (s.kind === 'menu'){
-    Store._aiTmp = s.obj;
-    openMenuForm('__ai_' + i);
-  } else {
-    Store._aiTmp = s.obj;
-    openPrinForm('__ai_' + i);
-  }
+  Store._aiTmp = s.obj;
+  if (s.kind === 'menu') openMenuForm('__ai_' + i);
+  else if (s.kind === 'definition') openDefForm('__ai_' + i);
+  else openPrinForm('__ai_' + i);
 }
 
 function aiCommit(){
@@ -2196,14 +2408,16 @@ function aiCommit(){
   if (!chosen.length){ toast('取り込む項目にチェックを入れてください'); return; }
   const menus = chosen.filter(s => s.kind === 'menu').map(s => s.obj);
   const prins = chosen.filter(s => s.kind === 'principle').map(s => s.obj);
-  if (menus.length) Store.menus      = Store.upsert(Store.menus, menus);
-  if (prins.length) Store.principles = Store.upsert(Store.principles, prins);
+  const defs  = chosen.filter(s => s.kind === 'definition').map(s => s.obj);
+  if (menus.length) Store.menus       = Store.upsert(Store.menus, menus);
+  if (prins.length) Store.principles  = Store.upsert(Store.principles, prins);
+  if (defs.length)  Store.definitions = Store.upsert(Store.definitions, defs);
   Store.save();
   Sync.push();
   AI_STAGE = [];
   $('#ai-json').value = '';
   renderAdmin();
-  toast('取り込みました（メニュー' + menus.length + '件・原則' + prins.length + '件）');
+  toast('取り込みました（メニュー' + menus.length + '件・原則' + prins.length + '件・定義' + defs.length + '件）');
 }
 
 function aiClear(){
@@ -2215,7 +2429,7 @@ function aiClear(){
 
 function resetAll(){
   if (!confirm('この端末の表示を初期データに戻します。クラウドにログインすると再び同期されます。よろしいですか？')) return;
-  [LS.menus, LS.prin, LS.seedv, LS.remotev, LS.bm].forEach(k => localStorage.removeItem(k));
+  [LS.menus, LS.prin, LS.defs, LS.seedv, LS.remotev, LS.bm].forEach(k => localStorage.removeItem(k));
   location.reload();
 }
 
@@ -2252,6 +2466,7 @@ function bindEvents(){
       case 'bm':            toggleBM(el.dataset.id); break;
       case 'open-menu':     openMenuModal(el.dataset.id); break;
       case 'open-prin':     openPrinModal(el.dataset.id); break;
+      case 'open-def':      openDefModal(el.dataset.id); break;
       case 'modal-close':   closeModal(); break;
       case 'book-cat':      BOOK.cat = el.dataset.v; renderBook(); break;
       case 'gen-plan':      onGenPlan(); break;
@@ -2265,8 +2480,12 @@ function bindEvents(){
       case 'adm-new-prin':  openPrinForm(null); break;
       case 'adm-edit-prin': openPrinForm(el.dataset.id); break;
       case 'adm-del-prin':  delPrin(el.dataset.id); break;
+      case 'adm-new-def':   openDefForm(null); break;
+      case 'adm-edit-def':  openDefForm(el.dataset.id); break;
+      case 'adm-del-def':   delDef(el.dataset.id); break;
       case 'save-menu':     saveMenu(); break;
       case 'save-prin':     savePrin(); break;
+      case 'save-def':      saveDef(); break;
       case 'adm-export':    exportData(); break;
       case 'adm-import':    { const fi = $('#imp-file'); if (fi) fi.click(); } break;
       case 'ai-preview':    aiPreview(); break;
