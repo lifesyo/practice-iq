@@ -75,17 +75,46 @@ module.exports = async function handler(req, res) {
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
     + MODEL + ':generateContent?key=' + encodeURIComponent(apiKey);
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+  const sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  const RETRYABLE = { 429: 1, 500: 1, 502: 1, 503: 1, 504: 1 };
+  const MAX_TRIES = 4;
 
-    if (!response.ok) {
+  try {
+    let response = null;
+    let lastStatus = 0;
+    for (let attempt = 0; attempt < MAX_TRIES; attempt++) {
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (netErr) {
+        // ネットワーク例外も一時的とみなして再試行
+        lastStatus = 0;
+        if (attempt < MAX_TRIES - 1) { await sleep(600 * Math.pow(2, attempt)); continue; }
+        throw netErr;
+      }
+
+      if (response.ok) break;
+
+      lastStatus = response.status;
+      if (RETRYABLE[response.status] && attempt < MAX_TRIES - 1) {
+        // 0.6s, 1.2s, 2.4s … と待って再試行（混雑・過負荷向け）
+        await sleep(600 * Math.pow(2, attempt));
+        continue;
+      }
+      // 再試行対象外、または最終試行
       const errBody = await response.text();
       console.error('Gemini API error:', response.status, errBody);
-      return res.status(502).json({ error: 'AI APIエラー (' + response.status + ')' });
+      const msg = (response.status === 503 || response.status === 429)
+        ? 'AIが混み合っています。少し待ってもう一度お試しください。'
+        : 'AI APIエラー (' + response.status + ')';
+      return res.status(502).json({ error: msg });
+    }
+
+    if (!response || !response.ok) {
+      return res.status(502).json({ error: 'AIが混み合っています。少し待ってもう一度お試しください。（' + (lastStatus || 'network') + '）' });
     }
 
     const data = await response.json();

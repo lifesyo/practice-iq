@@ -302,13 +302,23 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .chat-ref .cr-meta{color:var(--faint);font-size:11px;margin-top:1px}
 .chat-input{display:flex;gap:8px;align-items:flex-end}
 .chat-input .field{flex:1}
-/* ---- ノート ---- */
-.notecard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
-.notecard .nc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+/* ---- ノート（目次／アコーディオン） ---- */
+.notecard{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:8px;overflow:hidden}
+.notecard .nc-bar{display:flex;align-items:center;gap:10px;padding:13px 14px;cursor:pointer;user-select:none}
+.notecard .nc-bar:active{background:var(--panel2)}
+.notecard .nc-arrow{color:var(--faint);font-size:12px;flex:none;width:12px}
+.notecard.open .nc-arrow{color:var(--acc)}
+.notecard .nc-bar-main{flex:1;min-width:0}
+.notecard .nc-chips{margin-top:5px;display:flex;flex-wrap:wrap;gap:4px}
+.notecard .nc-badge{flex:none;font-size:10.5px;font-weight:700;color:var(--faint);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px 7px}
+.notecard .nc-detail{display:none;padding:0 14px 14px;border-top:1px solid var(--line)}
+.notecard.open .nc-detail{display:block;padding-top:12px}
 .notecard .nc-title{font-weight:800;font-size:15px;line-height:1.4}
-.notecard .nc-src{font-size:11px;color:var(--faint);margin-top:2px}
+.notecard .nc-src{font-size:11px;color:var(--faint);margin-bottom:4px}
 .notecard .nc-sec{margin-top:9px}
 .notecard .nc-summary{margin-top:9px;font-size:14px;line-height:1.75;white-space:pre-wrap}
+.notecard .nc-points,.note-prev .nc-points{margin:5px 0 0;padding-left:20px}
+.notecard .nc-points li,.note-prev .nc-points li{font-size:14px;line-height:1.7;margin:2px 0}
 .notecard .nc-lbl{font-size:11px;font-weight:800;color:var(--acc);letter-spacing:.05em;margin-bottom:3px}
 .notecard ul{margin:0;padding-left:18px}
 .notecard li{font-size:13.5px;line-height:1.7;margin:1px 0}
@@ -529,6 +539,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
     </div>
 
     <div class="bookbar"><input id="note-q" class="field" type="search" placeholder="ノートをキーワードで検索"></div>
+    <div class="chips" id="note-cats" style="margin-bottom:10px"></div>
     <div class="count" id="note-count"></div>
     <div id="note-list"></div>
   </section>
@@ -593,7 +604,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.3.0';
+const APP_VER = '1.5.0';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -2856,47 +2867,66 @@ function reclassifyMenus(){
 }
 
 /* ============================================================
-   AI（Anthropic API proxy 経由） — 指導ノート要約 ＆ 相談チャット
+   AI（Gemini API proxy 経由） — 指導ノート要約 ＆ 相談チャット
    サーバーレス関数 /api/ai が {messages, system, max_tokens} を受け取り
-   {text} を返す前提（Stat IQ の api/analyze.js と同系統）。
+   {text} を返す。混雑時は /api/ai 側でも再試行する。
    ============================================================ */
 async function callAI(messages, system, maxTokens){
-  const res = await fetch('/api/ai', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: maxTokens || 1200,
-      system: system || '',
-      messages: messages
-    })
-  });
-  if (!res.ok){
-    let detail = '';
-    try { const j = await res.json(); detail = j.error || j.message || ''; } catch (e) {}
-    throw new Error('AI応答エラー (' + res.status + ')' + (detail ? '：' + detail : ''));
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++){
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ max_tokens: maxTokens || 1200, system: system || '', messages: messages })
+      });
+      if (res.ok){
+        const data = await res.json();
+        const text = (typeof data.text === 'string')
+          ? data.text
+          : (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+        if (text && text.trim()) return text;
+        // 空応答（安全フィルタ等）は再試行しても無駄なので即返す
+        throw new Error('AIが空の応答を返しました');
+      }
+      let detail = '';
+      try { const j = await res.json(); detail = j.error || j.message || ''; } catch (e) {}
+      lastErr = new Error(detail || ('AI応答エラー (' + res.status + ')'));
+      // サーバー側混雑（502/503/429）なら待って再試行
+      if ((res.status === 502 || res.status === 503 || res.status === 429) && attempt < 2){
+        await sleep(800 * (attempt + 1));
+        continue;
+      }
+      throw lastErr;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 2){ await sleep(800 * (attempt + 1)); continue; }
+      throw lastErr;
+    }
   }
-  const data = await res.json();
-  // {text} 形式・{content:[...]} 形式どちらにも対応
-  if (typeof data.text === 'string') return data.text;
-  return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+  throw lastErr || new Error('AI応答エラー');
 }
 
 /* ---------- 指導ノート：貼り付け／画像・PDF→要約→整理 ---------- */
 function normalizeNote(o){
   const kw = _kw(o.kw || o.keywords);
-  // sections: [{heading, summary}] を正規化。無ければ単一 summary から1セクション化
+  // sections: [{heading, points:[...]}] を正規化。points が無ければ summary を1項目化
   let sections = [];
   if (Array.isArray(o.sections)){
-    sections = o.sections.map(s => ({
-      heading: String((s && s.heading) || '').trim(),
-      summary: String((s && (s.summary || s.body)) || '').trim()
-    })).filter(s => s.summary);
+    sections = o.sections.map(s => {
+      let points = [];
+      if (s && Array.isArray(s.points)) points = s.points.map(x => String(x || '').trim()).filter(Boolean);
+      else if (s && (s.summary || s.body)) points = _splitText(s.summary || s.body);
+      return { heading: String((s && s.heading) || '').trim(), points: points };
+    }).filter(s => s.points.length);
   }
-  if (!sections.length && o.summary){
-    sections = [{ heading: '', summary: String(o.summary).trim() }];
+  if (!sections.length){
+    const pts = Array.isArray(o.points) ? o.points.map(x => String(x||'').trim()).filter(Boolean)
+              : (o.summary ? _splitText(o.summary) : []);
+    if (pts.length) sections = [{ heading: '', points: pts }];
   }
-  const allText = sections.map(s => s.heading + ' ' + s.summary).join(' ');
+  const allText = sections.map(s => s.heading + ' ' + s.points.join(' ')).join(' ');
   const explicit = _arr(o.cats || o.categories).map(c => registerCat(c)).filter(Boolean);
   const cats = explicit.length ? explicit
     : _classifyCats('', [o.title, allText, kw.join(' ')]);
@@ -2906,7 +2936,7 @@ function normalizeNote(o){
     source: String(o.source || '').trim(),
     raw: String(o.raw || '').trim(),
     sections: sections,
-    summary: sections.map(s => (s.heading ? s.heading + '：' : '') + s.summary).join('\n'),
+    summary: sections.map(s => (s.heading ? s.heading + '：' : '') + s.points.join(' / ')).join('\n'),
     cats: cats,
     cat: cats[0] || '',
     kw: kw,
@@ -2952,10 +2982,10 @@ async function summarizeNote(){
 
   const sys = 'あなたはバスケットボール指導の知識整理アシスタントです。コーチが相談で得た回答や、撮影した資料（画像・PDF）を、指導ノートとして要約します。'
     + '認知→判断→選択→実行という構造的・思考的バスケの指導観に沿ってまとめてください。'
-    + '内容に複数の話題（トピック）が含まれる場合は、話題ごとに「見出し＋要約」に分けてください。話題が1つだけなら1セクションで構いません。'
-    + '各セクションの要約は要点を簡潔に（重要な内容は落とさない）。'
+    + '内容に複数の話題（トピック）が含まれる場合は、話題ごとに「見出し＋要点の箇条書き」に分けてください。話題が1つだけなら1セクションで構いません。'
+    + '各セクションの points は、要点を短い箇条書き（1項目1文・体言止めや簡潔な文。3〜6項目程度）にしてください。重要な内容は落とさないこと。'
     + '出力は必ず次のJSONのみ（前後に説明やコードフェンス無し）：'
-    + '{"title":"全体の短い見出し","sections":[{"heading":"話題の見出し","summary":"その話題の要約"}],"cats":["関連カテゴリー"],"kw":["検索キーワード"]}。'
+    + '{"title":"全体の短い見出し","sections":[{"heading":"話題の見出し","points":["要点1","要点2"]}],"cats":["関連カテゴリー"],"kw":["検索キーワード"]}。'
     + 'cats は次から該当するものを選ぶ（複数可・無理に付けない）：' + allCats().join('、') + '。';
 
   // content を組み立て（テキスト＋画像/PDF）
@@ -2981,14 +3011,18 @@ async function summarizeNote(){
 }
 
 function noteSectionsHTML(n){
-  const secs = Array.isArray(n.sections) && n.sections.length
-    ? n.sections
-    : (n.summary ? [{ heading: '', summary: n.summary }] : []);
-  return secs.map(s =>
-    '<div class="nc-sec">'
-    + (s.heading ? '<div class="nc-lbl">' + esc(s.heading) + '</div>' : '')
-    + '<div class="nc-summary">' + esc(s.summary) + '</div></div>'
-  ).join('');
+  let secs = Array.isArray(n.sections) && n.sections.length ? n.sections : null;
+  if (!secs){
+    // 旧データ（summary文字列のみ）
+    if (!n.summary) return '';
+    secs = [{ heading: '', points: String(n.summary).split('\n').map(s => s.trim()).filter(Boolean) }];
+  }
+  return secs.map(s => {
+    const pts = Array.isArray(s.points) ? s.points : (s.summary ? [s.summary] : []);
+    return '<div class="nc-sec">'
+      + (s.heading ? '<div class="nc-lbl">' + esc(s.heading) + '</div>' : '')
+      + '<ul class="nc-points">' + pts.map(p => '<li>' + esc(p) + '</li>').join('') + '</ul></div>';
+  }).join('');
 }
 
 function notePreviewHTML(n){
@@ -3040,17 +3074,97 @@ function delNote(id){
 }
 
 function noteCard(n){
-  return '<div class="notecard">'
-    + '<div class="nc-head"><div><div class="nc-title">' + esc(n.title) + '</div>'
-    +   (n.source ? '<div class="nc-src">出典：' + esc(n.source) + '</div>' : '')
+  const open = NOTE.open.has(n.id);
+  const secCount = (Array.isArray(n.sections) ? n.sections.length : 0) || (n.summary ? 1 : 0);
+  return '<div class="notecard' + (open ? ' open' : '') + '">'
+    + '<div class="nc-bar" data-act="note-toggle" data-id="' + esc(n.id) + '">'
+    +   '<span class="nc-arrow">' + (open ? '▾' : '▸') + '</span>'
+    +   '<div class="nc-bar-main">'
+    +     '<div class="nc-title">' + esc(n.title) + '</div>'
+    +     (n.cats.length ? '<div class="nc-chips">' + catChips(n) + '</div>' : '')
     +   '</div>'
-    +   '<button class="btn btn-ghost btn-sm btn-danger" data-act="note-del" data-id="' + esc(n.id) + '">削除</button></div>'
-    + (n.cats.length ? '<div style="margin:8px 0 2px">' + catChips(n) + '</div>' : '')
-    + noteSectionsHTML(n)
+    +   (secCount > 1 ? '<span class="nc-badge">' + secCount + '項目</span>' : '')
+    + '</div>'
+    + '<div class="nc-detail">'
+    +   (n.source ? '<div class="nc-src">出典：' + esc(n.source) + '</div>' : '')
+    +   noteSectionsHTML(n)
+    +   '<div style="display:flex;gap:6px;margin-top:10px">'
+    +     '<button class="btn btn-ghost btn-sm" data-act="note-edit" data-id="' + esc(n.id) + '">編集</button>'
+    +     '<button class="btn btn-ghost btn-sm btn-danger" data-act="note-del" data-id="' + esc(n.id) + '">削除</button>'
+    +   '</div>'
+    + '</div>'
     + '</div>';
 }
 
-const NOTE = { q: '' };
+/* ノートを構造化テキスト（# 見出し / - 箇条書き）に変換 */
+function noteToEditText(n){
+  const secs = Array.isArray(n.sections) && n.sections.length ? n.sections
+    : [{ heading: '', points: (n.summary || '').split('\n').map(s => s.trim()).filter(Boolean) }];
+  return secs.map(s => {
+    const head = s.heading ? ('# ' + s.heading + '\n') : '';
+    const pts = (Array.isArray(s.points) ? s.points : []).map(p => '- ' + p).join('\n');
+    return head + pts;
+  }).join('\n\n');
+}
+/* 構造化テキストを sections に戻す */
+function editTextToSections(text){
+  const lines = String(text || '').split('\n');
+  const secs = [];
+  let cur = null;
+  lines.forEach(raw => {
+    const line = raw.trim();
+    if (!line){ return; }
+    if (line.startsWith('#')){
+      cur = { heading: line.replace(/^#+\s*/, '').trim(), points: [] };
+      secs.push(cur);
+    } else {
+      const p = line.replace(/^[-・*•]\s*/, '').trim();
+      if (!p) return;
+      if (!cur){ cur = { heading: '', points: [] }; secs.push(cur); }
+      cur.points.push(p);
+    }
+  });
+  return secs.filter(s => s.points.length || s.heading);
+}
+
+function editNote(id){
+  const n = Store.note(id);
+  if (!n) return;
+  const catOpts = catMultiSelect('f-ncats', catsOf(n));
+  const body = '<input type="hidden" id="f-nid" value="' + esc(n.id) + '">'
+    + fld('見出し（タイトル）', '<input id="f-ntitle" class="field" value="' + esc(n.title) + '">')
+    + fld('カテゴリー（複数選択可）', catOpts)
+    + fld('内容（「# 見出し」で項目、「- 」で箇条書き）',
+        '<textarea id="f-nbody" class="field" rows="12" style="font-size:14px;line-height:1.7">' + esc(noteToEditText(n)) + '</textarea>')
+    + '<div style="display:flex;gap:8px;margin-top:6px">'
+    +   '<button class="btn btn-acc" data-act="note-edit-save">保存</button>'
+    +   '<button class="btn btn-ghost" data-act="modal-close">キャンセル</button>'
+    + '</div>';
+  openModal('ノートを編集', body);
+}
+
+function saveNoteEdit(){
+  const id = $('#f-nid').value;
+  const n = Store.note(id);
+  if (!n) { closeModal(); return; }
+  const title = ($('#f-ntitle').value || '').trim() || n.title;
+  const sections = editTextToSections($('#f-nbody').value);
+  const cats = readCatSelect('f-ncats');
+  const updated = normalizeNote({
+    id: n.id, title: title, source: n.source, raw: n.raw,
+    sections: sections.length ? sections : n.sections,
+    cats: cats.length ? cats : catsOf(n),
+    kw: n.kw, createdAt: n.createdAt
+  });
+  Store.notes = Store.upsert(Store.notes, [updated]);
+  Store.save();
+  Sync.push();
+  closeModal();
+  renderNotes();
+  toast('ノートを更新しました');
+}
+
+const NOTE = { q: '', cat: 'all', open: new Set() };
 const matchNote = (n, q) =>
   norm(n.title).includes(q) || norm(n.summary).includes(q) || norm(n.raw).includes(q)
   || (n.sections || []).some(s => norm(s.heading).includes(q) || norm(s.summary).includes(q))
@@ -3059,13 +3173,35 @@ const matchNote = (n, q) =>
 
 function renderNotes(){
   const q = norm(NOTE.q);
-  const list = (Store.notes || [])
-    .filter(n => !q || matchNote(n, q))
+  let list = (Store.notes || []).slice();
+
+  // カテゴリーチップ（実際に使われているものだけ）
+  const used = new Set();
+  list.forEach(n => catsOf(n).forEach(c => used.add(c)));
+  const order = allCats();
+  const usedCats = order.filter(c => used.has(c)).concat(Array.from(used).filter(c => !order.includes(c)));
+  if (NOTE.cat !== 'all' && !usedCats.includes(NOTE.cat)) NOTE.cat = 'all';
+  const chipsBox = $('#note-cats');
+  if (chipsBox){
+    chipsBox.innerHTML = ['all'].concat(usedCats).map(c =>
+      '<button class="chip' + (NOTE.cat === c ? ' on' : '') + '" data-act="note-cat" data-v="' + esc(c) + '">'
+      + (c === 'all' ? 'すべて' : esc(c)) + '</button>').join('');
+  }
+
+  list = list
+    .filter(n => (NOTE.cat === 'all' || catsOf(n).includes(NOTE.cat)) && (!q || matchNote(n, q)))
     .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+
   $('#note-count').textContent = list.length + ' 件のノート';
   $('#note-list').innerHTML = list.length
     ? list.map(noteCard).join('')
-    : '<div class="empty"><div class="e-t">ノートがありません</div><div class="e-d">上の欄に相談回答を貼り付けて「AIで要約して整理」を押すと保存できます。</div></div>';
+    : '<div class="empty"><div class="e-t">ノートがありません</div><div class="e-d">上の欄に相談回答を貼り付けるか画像・PDFを読み込んで「AIで要約して整理」を押すと保存できます。</div></div>';
+}
+
+function toggleNote(id){
+  if (NOTE.open.has(id)) NOTE.open.delete(id);
+  else NOTE.open.add(id);
+  renderNotes();
 }
 
 /* ---------- 相談チャット（RAG：保存知識を参照） ---------- */
@@ -3125,7 +3261,10 @@ function buildContextText(ctx){
     ctx.notes.forEach(n => {
       t += '■ ' + n.title + '\n';
       if (Array.isArray(n.sections) && n.sections.length){
-        n.sections.forEach(s => { t += (s.heading ? '・' + s.heading + '：' : '・') + s.summary + '\n'; });
+        n.sections.forEach(s => {
+          const pts = Array.isArray(s.points) ? s.points.join(' / ') : (s.summary || '');
+          t += (s.heading ? '・' + s.heading + '：' : '・') + pts + '\n';
+        });
       } else if (n.summary){
         t += n.summary + '\n';
       }
@@ -3276,6 +3415,10 @@ function bindEvents(){
       case 'note-save':      saveNotePreview(); break;
       case 'note-discard':   discardNotePreview(); break;
       case 'note-del':       delNote(el.dataset.id); break;
+      case 'note-edit':      editNote(el.dataset.id); break;
+      case 'note-edit-save': saveNoteEdit(); break;
+      case 'note-toggle':    toggleNote(el.dataset.id); break;
+      case 'note-cat':       NOTE.cat = el.dataset.v; renderNotes(); break;
       case 'chat-send':      chatSend(); break;
       case 'chat-ex':        chatSend(el.dataset.v); break;
     }
