@@ -511,11 +511,16 @@ label.lbl .req{color:var(--acc);margin-left:3px}
   <section class="view" data-view="notes">
     <div class="h-eyebrow">NOTES</div>
     <div class="h-title">指導ノート</div>
-    <div class="h-desc">LINEやChatGPTで相談した回答を貼り付けると、AIが要約して「学び・注意点・指導ポイント」に整理して保存します。</div>
+    <div class="h-desc">相談した回答を貼り付けるか、画像・PDFを読み込むと、AIが内容ごとに要約して保存します。長い内容は項目ごとに分けて整理します。</div>
 
     <div class="card">
       <label class="lbl">相談で得た回答を貼り付け</label>
-      <textarea id="note-paste" class="field" rows="6" placeholder="LINE・ChatGPT などの回答をそのまま貼り付けてください"></textarea>
+      <textarea id="note-paste" class="field" rows="6" placeholder="LINE・ChatGPT などの回答をそのまま貼り付けてください（画像・PDFだけでもOK）"></textarea>
+      <div style="margin-top:8px">
+        <input type="file" id="note-file" accept="image/*,application/pdf" multiple style="display:none">
+        <button class="btn btn-ghost btn-sm" data-act="note-pick-file">📎 画像・PDFを選ぶ</button>
+        <span id="note-files" class="hint" style="margin-left:8px"></span>
+      </div>
       <div class="row2" style="margin-top:8px">
         <input id="note-src" class="field" placeholder="出典（任意・例：LINE / ChatGPT）">
         <button class="btn btn-acc" data-act="note-summarize">AIで要約して整理</button>
@@ -588,7 +593,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.2.2';
+const APP_VER = '1.3.0';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -2877,24 +2882,31 @@ async function callAI(messages, system, maxTokens){
   return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
 }
 
-/* ---------- 指導ノート：貼り付け→要約→整理 ---------- */
+/* ---------- 指導ノート：貼り付け／画像・PDF→要約→整理 ---------- */
 function normalizeNote(o){
-  const learnings = _splitText(o.learnings);
-  const cautions  = _splitText(o.cautions);
-  const coaching  = _splitText(o.coaching);
   const kw = _kw(o.kw || o.keywords);
+  // sections: [{heading, summary}] を正規化。無ければ単一 summary から1セクション化
+  let sections = [];
+  if (Array.isArray(o.sections)){
+    sections = o.sections.map(s => ({
+      heading: String((s && s.heading) || '').trim(),
+      summary: String((s && (s.summary || s.body)) || '').trim()
+    })).filter(s => s.summary);
+  }
+  if (!sections.length && o.summary){
+    sections = [{ heading: '', summary: String(o.summary).trim() }];
+  }
+  const allText = sections.map(s => s.heading + ' ' + s.summary).join(' ');
   const explicit = _arr(o.cats || o.categories).map(c => registerCat(c)).filter(Boolean);
   const cats = explicit.length ? explicit
-    : _classifyCats('', [o.title, o.summary, learnings.join(' '), cautions.join(' '), coaching.join(' '), kw.join(' ')]);
+    : _classifyCats('', [o.title, allText, kw.join(' ')]);
   return {
     id: o.id || uid('note'),
     title: String(o.title || '指導ノート').trim(),
     source: String(o.source || '').trim(),
     raw: String(o.raw || '').trim(),
-    summary: String(o.summary || '').trim(),
-    learnings: learnings,
-    cautions:  cautions,
-    coaching:  coaching,
+    sections: sections,
+    summary: sections.map(s => (s.heading ? s.heading + '：' : '') + s.summary).join('\n'),
     cats: cats,
     cat: cats[0] || '',
     kw: kw,
@@ -2903,25 +2915,58 @@ function normalizeNote(o){
 }
 
 let _notePreview = null;
+let _noteFiles = [];   // {name, media_type, data(base64), kind:'image'|'document'}
+
+function readFileAsBase64(file){
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => { const res = String(r.result); const i = res.indexOf(','); resolve(i >= 0 ? res.slice(i + 1) : res); };
+    r.onerror = () => reject(new Error('ファイル読み込み失敗'));
+    r.readAsDataURL(file);
+  });
+}
+
+async function onNoteFiles(input){
+  const files = Array.from(input.files || []);
+  _noteFiles = [];
+  for (const f of files){
+    if (f.size > 6 * 1024 * 1024){ toast('「' + f.name + '」が大きすぎます（6MBまで）'); continue; }
+    try {
+      const data = await readFileAsBase64(f);
+      const isPdf = /pdf/i.test(f.type) || /\.pdf$/i.test(f.name);
+      _noteFiles.push({ name: f.name, media_type: f.type || (isPdf ? 'application/pdf' : 'image/jpeg'), data, kind: isPdf ? 'document' : 'image' });
+    } catch (e) { toast('「' + f.name + '」の読み込みに失敗'); }
+  }
+  const lbl = $('#note-files');
+  if (lbl) lbl.textContent = _noteFiles.length ? (_noteFiles.length + ' 件の添付：' + _noteFiles.map(f => f.name).join('、')) : '';
+}
 
 async function summarizeNote(){
   const raw = ($('#note-paste').value || '').trim();
   const src = ($('#note-src').value || '').trim();
-  if (!raw){ toast('要約する内容を貼り付けてください'); return; }
+  if (!raw && !_noteFiles.length){ toast('テキストを貼り付けるか、画像・PDFを選んでください'); return; }
   if (raw.length > 20000){ toast('内容が長すぎます（2万字まで）'); return; }
 
   const box = $('#note-preview');
   box.innerHTML = '<div class="hint">AIが要約・整理しています…</div>';
 
-  const sys = 'あなたはバスケットボール指導の知識整理アシスタントです。コーチが外部の相談（LINEやChatGPT等）で得た回答を、指導ノートとして要約します。'
-    + '認知→判断→選択→実行という構造的・思考的バスケの指導観に沿って、要点を簡潔にまとめてください。'
+  const sys = 'あなたはバスケットボール指導の知識整理アシスタントです。コーチが相談で得た回答や、撮影した資料（画像・PDF）を、指導ノートとして要約します。'
+    + '認知→判断→選択→実行という構造的・思考的バスケの指導観に沿ってまとめてください。'
+    + '内容に複数の話題（トピック）が含まれる場合は、話題ごとに「見出し＋要約」に分けてください。話題が1つだけなら1セクションで構いません。'
+    + '各セクションの要約は要点を簡潔に（重要な内容は落とさない）。'
     + '出力は必ず次のJSONのみ（前後に説明やコードフェンス無し）：'
-    + '{"title":"短い見出し","summary":"要点をまとめた要約（3〜6文程度。重要な内容は落とさず、簡潔に）","cats":["関連カテゴリー"],"kw":["検索キーワード"]}。'
+    + '{"title":"全体の短い見出し","sections":[{"heading":"話題の見出し","summary":"その話題の要約"}],"cats":["関連カテゴリー"],"kw":["検索キーワード"]}。'
     + 'cats は次から該当するものを選ぶ（複数可・無理に付けない）：' + allCats().join('、') + '。';
-  const user = '次の相談回答を指導ノートに整理してください。\n\n' + raw;
+
+  // content を組み立て（テキスト＋画像/PDF）
+  const content = [];
+  content.push({ type: 'text', text: '次の内容を指導ノートに整理してください。' + (raw ? '\n\n' + raw : '') });
+  _noteFiles.forEach(f => {
+    content.push({ type: f.kind, source: { type: 'base64', media_type: f.media_type, data: f.data } });
+  });
 
   try {
-    const text = await callAI([{ role: 'user', content: user }], sys, 1300);
+    const text = await callAI([{ role: 'user', content: content }], sys, 1800);
     let clean = text.replace(/```json|```/g, '').trim();
     const s = clean.indexOf('{'), e = clean.lastIndexOf('}');
     if (s >= 0 && e >= 0) clean = clean.slice(s, e + 1);
@@ -2931,15 +2976,26 @@ async function summarizeNote(){
     box.innerHTML = notePreviewHTML(_notePreview);
   } catch (err) {
     box.innerHTML = '<div class="hint" style="color:var(--acc)">要約に失敗しました：' + esc(err.message)
-      + '<br>（/api/ai と ANTHROPIC_API_KEY の設定を確認してください）</div>';
+      + '<br>（/api/ai と GEMINI_API_KEY の設定を確認してください）</div>';
   }
+}
+
+function noteSectionsHTML(n){
+  const secs = Array.isArray(n.sections) && n.sections.length
+    ? n.sections
+    : (n.summary ? [{ heading: '', summary: n.summary }] : []);
+  return secs.map(s =>
+    '<div class="nc-sec">'
+    + (s.heading ? '<div class="nc-lbl">' + esc(s.heading) + '</div>' : '')
+    + '<div class="nc-summary">' + esc(s.summary) + '</div></div>'
+  ).join('');
 }
 
 function notePreviewHTML(n){
   return '<div class="note-prev">'
     + '<div class="nc-title">' + esc(n.title) + '</div>'
     + (n.cats.length ? '<div style="margin:6px 0">' + catChips(n) + '</div>' : '')
-    + '<div class="nc-summary">' + esc(n.summary) + '</div>'
+    + noteSectionsHTML(n)
     + '<div style="display:flex;gap:8px;margin-top:12px">'
     +   '<button class="btn btn-acc" data-act="note-save">この内容で保存</button>'
     +   '<button class="btn btn-ghost" data-act="note-discard">破棄</button>'
@@ -2958,8 +3014,11 @@ function saveNotePreview(){
   Store.save();
   Sync.push();
   _notePreview = null;
+  _noteFiles = [];
   $('#note-paste').value = '';
   $('#note-src').value = '';
+  const ff = $('#note-files'); if (ff) ff.textContent = '';
+  const fi = $('#note-file'); if (fi) fi.value = '';
   $('#note-preview').innerHTML = '';
   renderNotes();
   toast('指導ノートを保存しました');
@@ -2987,16 +3046,14 @@ function noteCard(n){
     +   '</div>'
     +   '<button class="btn btn-ghost btn-sm btn-danger" data-act="note-del" data-id="' + esc(n.id) + '">削除</button></div>'
     + (n.cats.length ? '<div style="margin:8px 0 2px">' + catChips(n) + '</div>' : '')
-    + '<div class="nc-summary">' + esc(n.summary) + '</div>'
+    + noteSectionsHTML(n)
     + '</div>';
 }
 
 const NOTE = { q: '' };
 const matchNote = (n, q) =>
   norm(n.title).includes(q) || norm(n.summary).includes(q) || norm(n.raw).includes(q)
-  || (n.learnings || []).some(x => norm(x).includes(q))
-  || (n.cautions  || []).some(x => norm(x).includes(q))
-  || (n.coaching  || []).some(x => norm(x).includes(q))
+  || (n.sections || []).some(s => norm(s.heading).includes(q) || norm(s.summary).includes(q))
   || catsOf(n).some(c => norm(c).includes(q))
   || (n.kw || []).some(k => norm(k).includes(q));
 
@@ -3043,7 +3100,7 @@ function gatherContext(query){
   };
 
   const rankNotes = (Store.notes || []).map(n => ({ n, s:
-    scoreText(n.title + ' ' + n.summary + ' ' + (n.learnings||[]).join(' ') + ' ' + (n.cautions||[]).join(' ') + ' ' + (n.coaching||[]).join(' ') + ' ' + (n.kw||[]).join(' ') + ' ' + catsOf(n).join(' '))
+    scoreText(n.title + ' ' + n.summary + ' ' + (n.kw||[]).join(' ') + ' ' + catsOf(n).join(' '))
   })).filter(x => x.s > 0).sort((a,b)=>b.s-a.s).slice(0, 6).map(x => x.n);
 
   const rankMenus = (Store.menus || []).map(m => ({ m, s:
@@ -3067,10 +3124,11 @@ function buildContextText(ctx){
     t += '【指導ノート（過去の相談から整理した知見）】\n';
     ctx.notes.forEach(n => {
       t += '■ ' + n.title + '\n';
-      if (n.summary) t += '要約：' + n.summary + '\n';
-      if (n.learnings.length) t += '学び：' + n.learnings.join(' / ') + '\n';
-      if (n.cautions.length)  t += '注意点：' + n.cautions.join(' / ') + '\n';
-      if (n.coaching.length)  t += '指導ポイント：' + n.coaching.join(' / ') + '\n';
+      if (Array.isArray(n.sections) && n.sections.length){
+        n.sections.forEach(s => { t += (s.heading ? '・' + s.heading + '：' : '・') + s.summary + '\n'; });
+      } else if (n.summary){
+        t += n.summary + '\n';
+      }
       t += '\n';
     });
   }
@@ -3214,6 +3272,7 @@ function bindEvents(){
       case 'adm-reset':     resetAll(); break;
       case 'adm-reclassify': reclassifyMenus(); break;
       case 'note-summarize': summarizeNote(); break;
+      case 'note-pick-file': { const fi = $('#note-file'); if (fi) fi.click(); } break;
       case 'note-save':      saveNotePreview(); break;
       case 'note-discard':   discardNotePreview(); break;
       case 'note-del':       delNote(el.dataset.id); break;
@@ -3224,6 +3283,7 @@ function bindEvents(){
 
   document.addEventListener('change', e => {
     if (e.target && e.target.id === 'imp-file') importFile(e.target);
+    if (e.target && e.target.id === 'note-file') onNoteFiles(e.target);
     if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-ai-chk')){
       const i = +e.target.getAttribute('data-ai-chk');
       if (AI_STAGE[i]) AI_STAGE[i].use = e.target.checked;
