@@ -289,6 +289,29 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .bookbar{display:flex;gap:8px;margin-bottom:12px}
 .bookbar .field{flex:1;padding:10px 14px;font-size:16px}
 .count{font-size:11.5px;color:var(--faint);font-weight:700;margin:2px 2px 10px;letter-spacing:.04em}
+/* ---- 相談チャット ---- */
+.chat-log{display:flex;flex-direction:column;gap:10px;min-height:120px;margin-bottom:12px}
+.chat-msg{max-width:88%;padding:11px 14px;border-radius:14px;font-size:14.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
+.chat-msg.user{align-self:flex-end;background:var(--acc-soft);border:1px solid var(--acc-line)}
+.chat-msg.ai{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
+.chat-msg.ai.thinking{color:var(--faint)}
+.chat-refs{align-self:flex-start;max-width:88%;display:flex;flex-direction:column;gap:6px;margin-top:-2px}
+.chat-ref{display:flex;gap:8px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:9px 12px;font-size:13px;cursor:pointer}
+.chat-ref .cr-ic{flex:none}
+.chat-ref .cr-name{font-weight:700}
+.chat-ref .cr-meta{color:var(--faint);font-size:11px;margin-top:1px}
+.chat-input{display:flex;gap:8px;align-items:flex-end}
+.chat-input .field{flex:1}
+/* ---- ノート ---- */
+.notecard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.notecard .nc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.notecard .nc-title{font-weight:800;font-size:15px;line-height:1.4}
+.notecard .nc-src{font-size:11px;color:var(--faint);margin-top:2px}
+.notecard .nc-sec{margin-top:9px}
+.notecard .nc-lbl{font-size:11px;font-weight:800;color:var(--acc);letter-spacing:.05em;margin-bottom:3px}
+.notecard ul{margin:0;padding-left:18px}
+.notecard li{font-size:13.5px;line-height:1.7;margin:1px 0}
+.note-prev{background:var(--panel2);border:1px solid var(--acc-line);border-radius:12px;padding:13px}
 .mcard{
   display:flex;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);
   border-radius:12px;padding:13px 14px;margin-bottom:9px;transition:transform .06s;
@@ -470,6 +493,40 @@ label.lbl .req{color:var(--acc);margin-left:3px}
     <div id="book-list"></div>
   </section>
 
+  <!-- ================= 相談（AIチャット） ================= -->
+  <section class="view" data-view="chat">
+    <div class="h-eyebrow">AI CHAT</div>
+    <div class="h-title">指導の相談</div>
+    <div class="h-desc">保存した指導ノート・練習メニュー・原則・定義をもとに回答します。関連する練習があれば一緒に表示します。</div>
+    <div id="chat-log" class="chat-log"></div>
+    <div class="chat-input">
+      <textarea id="chat-q" class="field" rows="2" placeholder="例：ゾーンディフェンス対策は？"></textarea>
+      <button class="btn btn-acc" data-act="chat-send">送信</button>
+    </div>
+    <div class="chips" id="chat-ex" style="margin-top:10px"></div>
+  </section>
+
+  <!-- ================= ノート（指導ノート） ================= -->
+  <section class="view" data-view="notes">
+    <div class="h-eyebrow">NOTES</div>
+    <div class="h-title">指導ノート</div>
+    <div class="h-desc">LINEやChatGPTで相談した回答を貼り付けると、AIが要約して「学び・注意点・指導ポイント」に整理して保存します。</div>
+
+    <div class="card">
+      <label class="lbl">相談で得た回答を貼り付け</label>
+      <textarea id="note-paste" class="field" rows="6" placeholder="LINE・ChatGPT などの回答をそのまま貼り付けてください"></textarea>
+      <div class="row2" style="margin-top:8px">
+        <input id="note-src" class="field" placeholder="出典（任意・例：LINE / ChatGPT）">
+        <button class="btn btn-acc" data-act="note-summarize">AIで要約して整理</button>
+      </div>
+      <div id="note-preview" style="margin-top:12px"></div>
+    </div>
+
+    <div class="bookbar"><input id="note-q" class="field" type="search" placeholder="ノートをキーワードで検索"></div>
+    <div class="count" id="note-count"></div>
+    <div id="note-list"></div>
+  </section>
+
   <!-- ================= 管理 ================= -->
   <section class="view" data-view="admin">
     <div class="h-eyebrow">ADMIN</div>
@@ -505,8 +562,10 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 <nav class="tabbar">
   <div class="inner">
     <button data-tab="search" class="on"><span class="ic">🔍</span>AI検索</button>
+    <button data-tab="chat"><span class="ic">💬</span>相談</button>
     <button data-tab="plan"><span class="ic">📋</span>プラン</button>
     <button data-tab="book"><span class="ic">📖</span>教科書</button>
+    <button data-tab="notes"><span class="ic">🗒️</span>ノート</button>
     <button data-tab="admin"><span class="ic">⚙️</span>管理</button>
   </div>
 </nav>
@@ -528,7 +587,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.1.0';
+const APP_VER = '1.2.0';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -972,6 +1031,7 @@ const LS = {
   menus  : 'drilliq_menus',
   prin   : 'drilliq_principles',
   defs   : 'drilliq_definitions',
+  notes  : 'drilliq_notes',
   seedv  : 'drilliq_seedv',
   remotev: 'drilliq_remotev',
   bm     : 'drilliq_bookmarks',
@@ -979,7 +1039,7 @@ const LS = {
 };
 
 const Store = {
-  menus: [], principles: [], definitions: [], bookmarks: new Set(),
+  menus: [], principles: [], definitions: [], notes: [], bookmarks: new Set(),
 
   upsert(base, incoming){
     const map = new Map((base || []).map(x => [x.id, x]));
@@ -988,13 +1048,15 @@ const Store = {
   },
 
   load(){
-    let m = null, p = null, d = null;
+    let m = null, p = null, d = null, nt = null;
     try { m = JSON.parse(localStorage.getItem(LS.menus) || 'null'); } catch (e) {}
     try { p = JSON.parse(localStorage.getItem(LS.prin)  || 'null'); } catch (e) {}
     try { d = JSON.parse(localStorage.getItem(LS.defs)  || 'null'); } catch (e) {}
+    try { nt = JSON.parse(localStorage.getItem(LS.notes) || 'null'); } catch (e) {}
     this.menus       = Array.isArray(m) ? m : null;
     this.principles  = Array.isArray(p) ? p : null;
     this.definitions = Array.isArray(d) ? d : null;
+    this.notes       = Array.isArray(nt) ? nt : [];
 
     const sv = +(localStorage.getItem(LS.seedv) || 0);
     if (!this.menus || !this.principles || !this.definitions || sv < SEED_VERSION){
@@ -1004,6 +1066,7 @@ const Store = {
       localStorage.setItem(LS.seedv, String(SEED_VERSION));
       this.save();
     }
+    if (!Array.isArray(this.notes)) this.notes = [];
     try { this.bookmarks = new Set(JSON.parse(localStorage.getItem(LS.bm) || '[]')); }
     catch (e) { this.bookmarks = new Set(); }
 
@@ -1022,7 +1085,7 @@ const Store = {
       it.cats.forEach(registerCat);
       if (!it.cat && it.cats.length){ it.cat = it.cats[0]; touched = true; }
     });
-    fix(this.menus); fix(this.principles); fix(this.definitions);
+    fix(this.menus); fix(this.principles); fix(this.definitions); fix(this.notes);
     if (touched) this.save();
   },
 
@@ -1031,6 +1094,7 @@ const Store = {
       localStorage.setItem(LS.menus, JSON.stringify(this.menus));
       localStorage.setItem(LS.prin,  JSON.stringify(this.principles));
       localStorage.setItem(LS.defs,  JSON.stringify(this.definitions));
+      localStorage.setItem(LS.notes, JSON.stringify(this.notes));
     } catch (e) { toast('保存に失敗しました（容量不足の可能性）'); }
   },
 
@@ -1044,6 +1108,7 @@ const Store = {
     if (Array.isArray(remote.menus))       this.menus       = this.upsert(this.menus, remote.menus);
     if (Array.isArray(remote.principles))  this.principles  = this.upsert(this.principles, remote.principles);
     if (Array.isArray(remote.definitions)) this.definitions = this.upsert(this.definitions, remote.definitions);
+    if (Array.isArray(remote.notes))       this.notes       = this.upsert(this.notes, remote.notes);
     localStorage.setItem(LS.remotev, String(remote.version));
     this.ensureCats();
     this.save();
@@ -1053,6 +1118,7 @@ const Store = {
   menu(id){ return this.menus.find(x => x.id === id); },
   principle(id){ return this.principles.find(x => x.id === id); },
   definition(id){ return this.definitions.find(x => x.id === id); },
+  note(id){ return this.notes.find(x => x.id === id); },
   pass(){ return localStorage.getItem(LS.pass) || DEFAULT_PASS; }
 };
 
@@ -1142,6 +1208,7 @@ const Sync = {
       if (Array.isArray(d.menus))       Store.menus       = d.menus;
       if (Array.isArray(d.principles))  Store.principles  = d.principles;
       if (Array.isArray(d.definitions)) Store.definitions = d.definitions;
+      if (Array.isArray(d.notes))       Store.notes       = d.notes;
       localStorage.setItem(LS.remotev, String(+d.version || 0));
       Store.ensureCats();
       Store.save();
@@ -1164,6 +1231,7 @@ const Sync = {
       menus: Store.menus,
       principles: Store.principles,
       definitions: Store.definitions,
+      notes: Store.notes,
       updatedBy: (this.user && this.user.email) || '',
       updatedAt: new Date().toISOString()
     }).then(() => {
@@ -1217,11 +1285,12 @@ function renderAuth(){
 
 /* 同期で変わったデータを各画面に反映 */
 function refreshViews(){
-  const sv = $('.view[data-view="search"]');
   const bv = $('.view[data-view="book"]');
   const av = $('.view[data-view="admin"]');
+  const nv = $('.view[data-view="notes"]');
   if (bv && bv.classList.contains('on')) renderBook();
   if (av && av.classList.contains('on')) renderAdmin();
+  if (nv && nv.classList.contains('on')) renderNotes();
 }
 
 /* ============================================================
@@ -1233,6 +1302,8 @@ function switchTab(name){
   window.scrollTo(0, 0);
   if (name === 'book')  renderBook();
   if (name === 'admin') renderAdmin();
+  if (name === 'notes') renderNotes();
+  if (name === 'chat')  initChat();
 }
 
 /* ============================================================
@@ -2344,7 +2415,8 @@ function exportData(){
     exportedAt: new Date().toISOString(),
     menus: Store.menus,
     principles: Store.principles,
-    definitions: Store.definitions
+    definitions: Store.definitions,
+    notes: Store.notes
   };
   const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -2369,10 +2441,12 @@ function importFile(input){
         if (Array.isArray(j.menus))       Store.menus       = Store.upsert(Store.menus, j.menus);
         if (Array.isArray(j.principles))  Store.principles  = Store.upsert(Store.principles, j.principles);
         if (Array.isArray(j.definitions)) Store.definitions = Store.upsert(Store.definitions, j.definitions);
+        if (Array.isArray(j.notes))       Store.notes       = Store.upsert(Store.notes, j.notes);
       } else {
         if (Array.isArray(j.menus))       Store.menus       = j.menus;
         if (Array.isArray(j.principles))  Store.principles  = j.principles;
         if (Array.isArray(j.definitions)) Store.definitions = j.definitions;
+        if (Array.isArray(j.notes))       Store.notes       = j.notes;
       }
       Store.ensureCats();
       Store.save();
@@ -2776,6 +2850,310 @@ function reclassifyMenus(){
 }
 
 /* ============================================================
+   AI（Anthropic API proxy 経由） — 指導ノート要約 ＆ 相談チャット
+   サーバーレス関数 /api/ai が {messages, system, max_tokens} を受け取り
+   {text} を返す前提（Stat IQ の api/analyze.js と同系統）。
+   ============================================================ */
+async function callAI(messages, system, maxTokens){
+  const res = await fetch('/api/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens || 1200,
+      system: system || '',
+      messages: messages
+    })
+  });
+  if (!res.ok){
+    let detail = '';
+    try { const j = await res.json(); detail = j.error || j.message || ''; } catch (e) {}
+    throw new Error('AI応答エラー (' + res.status + ')' + (detail ? '：' + detail : ''));
+  }
+  const data = await res.json();
+  // {text} 形式・{content:[...]} 形式どちらにも対応
+  if (typeof data.text === 'string') return data.text;
+  return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+}
+
+/* ---------- 指導ノート：貼り付け→要約→整理 ---------- */
+function normalizeNote(o){
+  const learnings = _splitText(o.learnings);
+  const cautions  = _splitText(o.cautions);
+  const coaching  = _splitText(o.coaching);
+  const kw = _kw(o.kw || o.keywords);
+  const explicit = _arr(o.cats || o.categories).map(c => registerCat(c)).filter(Boolean);
+  const cats = explicit.length ? explicit
+    : _classifyCats('', [o.title, o.summary, learnings.join(' '), cautions.join(' '), coaching.join(' '), kw.join(' ')]);
+  return {
+    id: o.id || uid('note'),
+    title: String(o.title || '指導ノート').trim(),
+    source: String(o.source || '').trim(),
+    raw: String(o.raw || '').trim(),
+    summary: String(o.summary || '').trim(),
+    learnings: learnings,
+    cautions:  cautions,
+    coaching:  coaching,
+    cats: cats,
+    cat: cats[0] || '',
+    kw: kw,
+    createdAt: o.createdAt || new Date().toISOString()
+  };
+}
+
+let _notePreview = null;
+
+async function summarizeNote(){
+  const raw = ($('#note-paste').value || '').trim();
+  const src = ($('#note-src').value || '').trim();
+  if (!raw){ toast('要約する内容を貼り付けてください'); return; }
+  if (raw.length > 20000){ toast('内容が長すぎます（2万字まで）'); return; }
+
+  const box = $('#note-preview');
+  box.innerHTML = '<div class="hint">AIが要約・整理しています…</div>';
+
+  const sys = 'あなたはバスケットボール指導の知識整理アシスタントです。コーチが外部の相談（LINEやChatGPT等）で得た回答を、指導ノートとして整理します。'
+    + '認知→判断→選択→実行という構造的・思考的バスケの指導観に沿って、要点を簡潔にまとめてください。'
+    + '出力は必ず次のJSONのみ（前後に説明やコードフェンス無し）：'
+    + '{"title":"短い見出し","summary":"2〜3文の要約","learnings":["学び1","学び2"],"cautions":["注意点1"],"coaching":["指導ポイント1","指導ポイント2"],"cats":["関連カテゴリー"],"kw":["検索キーワード"]}。'
+    + 'cats は次から該当するものを選ぶ（複数可・無理に付けない）：' + allCats().join('、') + '。';
+  const user = '次の相談回答を指導ノートに整理してください。\n\n' + raw;
+
+  try {
+    const text = await callAI([{ role: 'user', content: user }], sys, 1300);
+    let clean = text.replace(/```json|```/g, '').trim();
+    const s = clean.indexOf('{'), e = clean.lastIndexOf('}');
+    if (s >= 0 && e >= 0) clean = clean.slice(s, e + 1);
+    const obj = JSON.parse(clean);
+    obj.raw = raw; obj.source = src;
+    _notePreview = normalizeNote(obj);
+    box.innerHTML = notePreviewHTML(_notePreview);
+  } catch (err) {
+    box.innerHTML = '<div class="hint" style="color:var(--acc)">要約に失敗しました：' + esc(err.message)
+      + '<br>（/api/ai と ANTHROPIC_API_KEY の設定を確認してください）</div>';
+  }
+}
+
+function notePreviewHTML(n){
+  return '<div class="note-prev">'
+    + '<div class="nc-title">' + esc(n.title) + '</div>'
+    + (n.cats.length ? '<div style="margin:6px 0">' + catChips(n) + '</div>' : '')
+    + noteSec('要約', [n.summary])
+    + noteSec('学び', n.learnings)
+    + noteSec('注意点', n.cautions)
+    + noteSec('指導ポイント', n.coaching)
+    + '<div style="display:flex;gap:8px;margin-top:12px">'
+    +   '<button class="btn btn-acc" data-act="note-save">この内容で保存</button>'
+    +   '<button class="btn btn-ghost" data-act="note-discard">破棄</button>'
+    + '</div></div>';
+}
+function noteSec(lbl, arr){
+  const items = (arr || []).filter(Boolean);
+  if (!items.length) return '';
+  return '<div class="nc-sec"><div class="nc-lbl">' + lbl + '</div><ul>'
+    + items.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul></div>';
+}
+
+function saveNotePreview(){
+  if (!_notePreview){ return; }
+  Store.notes = Store.upsert(Store.notes, [_notePreview]);
+  Store.save();
+  Sync.push();
+  _notePreview = null;
+  $('#note-paste').value = '';
+  $('#note-src').value = '';
+  $('#note-preview').innerHTML = '';
+  renderNotes();
+  toast('指導ノートを保存しました');
+}
+function discardNotePreview(){
+  _notePreview = null;
+  $('#note-preview').innerHTML = '';
+}
+
+function delNote(id){
+  const n = Store.note(id);
+  if (!n) return;
+  if (!confirm('「' + n.title + '」を削除しますか？')) return;
+  Store.notes = Store.notes.filter(x => x.id !== id);
+  Store.save();
+  Sync.push();
+  renderNotes();
+  toast('削除しました');
+}
+
+function noteCard(n){
+  return '<div class="notecard">'
+    + '<div class="nc-head"><div><div class="nc-title">' + esc(n.title) + '</div>'
+    +   (n.source ? '<div class="nc-src">出典：' + esc(n.source) + '</div>' : '')
+    +   '</div>'
+    +   '<button class="btn btn-ghost btn-sm btn-danger" data-act="note-del" data-id="' + esc(n.id) + '">削除</button></div>'
+    + (n.cats.length ? '<div style="margin:8px 0 2px">' + catChips(n) + '</div>' : '')
+    + noteSec('要約', [n.summary])
+    + noteSec('学び', n.learnings)
+    + noteSec('注意点', n.cautions)
+    + noteSec('指導ポイント', n.coaching)
+    + '</div>';
+}
+
+const NOTE = { q: '' };
+const matchNote = (n, q) =>
+  norm(n.title).includes(q) || norm(n.summary).includes(q) || norm(n.raw).includes(q)
+  || (n.learnings || []).some(x => norm(x).includes(q))
+  || (n.cautions  || []).some(x => norm(x).includes(q))
+  || (n.coaching  || []).some(x => norm(x).includes(q))
+  || catsOf(n).some(c => norm(c).includes(q))
+  || (n.kw || []).some(k => norm(k).includes(q));
+
+function renderNotes(){
+  const q = norm(NOTE.q);
+  const list = (Store.notes || [])
+    .filter(n => !q || matchNote(n, q))
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  $('#note-count').textContent = list.length + ' 件のノート';
+  $('#note-list').innerHTML = list.length
+    ? list.map(noteCard).join('')
+    : '<div class="empty"><div class="e-t">ノートがありません</div><div class="e-d">上の欄に相談回答を貼り付けて「AIで要約して整理」を押すと保存できます。</div></div>';
+}
+
+/* ---------- 相談チャット（RAG：保存知識を参照） ---------- */
+let CHAT_HISTORY = [];      // {role, content}
+let _chatInited = false;
+
+function initChat(){
+  if (_chatInited) return;
+  _chatInited = true;
+  $('#chat-ex').innerHTML = ['ゾーンディフェンス対策は？', '速攻の判断を上げる練習は？', '初心者のファンダメンタル指導の順番は？']
+    .map(t => '<button class="chip" data-act="chat-ex" data-v="' + esc(t) + '">' + esc(t) + '</button>').join('');
+}
+
+/* 質問に関連する保存知識を集める（簡易RAG：キーワード重なりでスコア） */
+function gatherContext(query){
+  const qn = norm(query);
+  // 区切りトークン（2文字以上）＋ 日本語向けに2-gramも併用して部分一致を拾う
+  const tokens = qn.split(/[\s　,、。：:！!？?・]+/).filter(t => t.length >= 2);
+  const grams = [];
+  const compact = qn.replace(/[\s　,、。：:！!？?・]+/g, '');
+  for (let i = 0; i + 2 <= compact.length; i++) grams.push(compact.slice(i, i + 2));
+  const probes = Array.from(new Set(tokens.concat(grams)));
+
+  const scoreText = (txt) => {
+    const t = norm(txt || '');
+    if (!t) return 0;
+    let s = 0;
+    // トークン一致は重め、2-gram一致は軽め
+    tokens.forEach(tok => { if (t.includes(tok)) s += 3; });
+    grams.forEach(g => { if (t.includes(g)) s += 1; });
+    return s;
+  };
+
+  const rankNotes = (Store.notes || []).map(n => ({ n, s:
+    scoreText(n.title + ' ' + n.summary + ' ' + (n.learnings||[]).join(' ') + ' ' + (n.cautions||[]).join(' ') + ' ' + (n.coaching||[]).join(' ') + ' ' + (n.kw||[]).join(' ') + ' ' + catsOf(n).join(' '))
+  })).filter(x => x.s > 0).sort((a,b)=>b.s-a.s).slice(0, 6).map(x => x.n);
+
+  const rankMenus = (Store.menus || []).map(m => ({ m, s:
+    scoreText(m.name + ' ' + (m.purpose||'') + ' ' + (m.desc||'') + ' ' + (m.kw||[]).join(' ') + ' ' + catsOf(m).join(' '))
+  })).filter(x => x.s > 0).sort((a,b)=>b.s-a.s).slice(0, 6).map(x => x.m);
+
+  const rankPrin = (Store.principles || []).map(p => ({ p, s:
+    scoreText(p.title + ' ' + (p.body||'') + ' ' + (p.kw||[]).join(' ') + ' ' + catsOf(p).join(' '))
+  })).filter(x => x.s > 0).sort((a,b)=>b.s-a.s).slice(0, 5).map(x => x.p);
+
+  const rankDefs = (Store.definitions || []).map(d => ({ d, s:
+    scoreText(d.term + ' ' + (d.body||'') + ' ' + (d.kw||[]).join(' '))
+  })).filter(x => x.s > 0).sort((a,b)=>b.s-a.s).slice(0, 4).map(x => x.d);
+
+  return { notes: rankNotes, menus: rankMenus, principles: rankPrin, definitions: rankDefs };
+}
+
+function buildContextText(ctx){
+  let t = '';
+  if (ctx.notes.length){
+    t += '【指導ノート（過去の相談から整理した知見）】\n';
+    ctx.notes.forEach(n => {
+      t += '■ ' + n.title + '\n';
+      if (n.summary) t += '要約：' + n.summary + '\n';
+      if (n.learnings.length) t += '学び：' + n.learnings.join(' / ') + '\n';
+      if (n.cautions.length)  t += '注意点：' + n.cautions.join(' / ') + '\n';
+      if (n.coaching.length)  t += '指導ポイント：' + n.coaching.join(' / ') + '\n';
+      t += '\n';
+    });
+  }
+  if (ctx.principles.length){
+    t += '【原則】\n';
+    ctx.principles.forEach(p => { t += '■ ' + p.title + '：' + (p.body || '') + '\n'; });
+    t += '\n';
+  }
+  if (ctx.definitions.length){
+    t += '【定義】\n';
+    ctx.definitions.forEach(d => { t += '■ ' + d.term + 'とは：' + (d.body || '') + '\n'; });
+    t += '\n';
+  }
+  if (ctx.menus.length){
+    t += '【登録されている練習メニュー（回答に関連するものは名前で案内してよい）】\n';
+    ctx.menus.forEach(m => {
+      t += '■ ' + m.name + '（' + catsOf(m).join('・') + '）：' + (m.purpose || m.desc || '').slice(0, 120) + '\n';
+    });
+    t += '\n';
+  }
+  return t.trim();
+}
+
+async function chatSend(text){
+  const q = (text != null ? text : ($('#chat-q').value || '')).trim();
+  if (!q) return;
+  $('#chat-q').value = '';
+  appendChat('user', q);
+  const thinkingEl = appendChat('ai', '考えています…', true);
+
+  const ctx = gatherContext(q);
+  const ctxText = buildContextText(ctx);
+
+  const sys = 'あなたはバスケットボール指導のアシスタントです。ユーザーは中学校の女子バスケ部の指導者です。'
+    + '認知→判断→選択→実行という構造的・思考的なバスケの指導観を共有しています。'
+    + '回答は、まず下記の「保存された知識」（指導ノート・原則・定義・登録練習メニュー）を最優先で参照し、それに基づいて具体的に答えてください。'
+    + '保存知識に該当が無い部分のみ一般論で補ってよいですが、その場合はその旨を一言添えてください。'
+    + '関連する登録練習メニューがあれば、回答の中でその名前を挙げて勧めてください。'
+    + '日本語で、簡潔かつ実践的に。\n\n'
+    + (ctxText ? ('=== 保存された知識 ===\n' + ctxText + '\n=== ここまで ===') : '（参照できる保存知識は見つかりませんでした。一般的な知見で答えてください。）');
+
+  CHAT_HISTORY.push({ role: 'user', content: q });
+
+  try {
+    const ans = await callAI(CHAT_HISTORY.slice(-8), sys, 1200);
+    thinkingEl.remove();
+    appendChat('ai', ans);
+    CHAT_HISTORY.push({ role: 'assistant', content: ans });
+    // 関連する登録メニューをカードで提示
+    if (ctx.menus.length) appendChatRefs(ctx.menus.slice(0, 4));
+  } catch (err) {
+    thinkingEl.classList.remove('thinking');
+    thinkingEl.textContent = '回答に失敗しました：' + err.message + '（/api/ai と ANTHROPIC_API_KEY を確認してください）';
+  }
+}
+
+function appendChat(role, text, thinking){
+  const log = $('#chat-log');
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + role + (thinking ? ' thinking' : '');
+  div.textContent = text;
+  log.appendChild(div);
+  div.scrollIntoView({ block: 'end' });
+  return div;
+}
+function appendChatRefs(menus){
+  const log = $('#chat-log');
+  const wrap = document.createElement('div');
+  wrap.className = 'chat-refs';
+  wrap.innerHTML = '<div class="nc-lbl" style="color:var(--faint)">関連する登録メニュー</div>'
+    + menus.map(m => '<div class="chat-ref" data-act="open-menu" data-id="' + esc(m.id) + '">'
+        + '<span class="cr-ic">🏀</span><div><div class="cr-name">' + esc(m.name) + '</div>'
+        + '<div class="cr-meta">' + esc(catsOf(m).join('・')) + ' ・ ' + (+m.time || 0) + '分</div></div></div>').join('');
+  log.appendChild(wrap);
+  wrap.scrollIntoView({ block: 'end' });
+}
+
+/* ============================================================
    イベント・初期化
    ============================================================ */
 function bindEvents(){
@@ -2840,6 +3218,12 @@ function bindEvents(){
       case 'google-logout': Sync.logout(); break;
       case 'adm-reset':     resetAll(); break;
       case 'adm-reclassify': reclassifyMenus(); break;
+      case 'note-summarize': summarizeNote(); break;
+      case 'note-save':      saveNotePreview(); break;
+      case 'note-discard':   discardNotePreview(); break;
+      case 'note-del':       delNote(el.dataset.id); break;
+      case 'chat-send':      chatSend(); break;
+      case 'chat-ex':        chatSend(el.dataset.v); break;
     }
   });
 
@@ -2853,6 +3237,10 @@ function bindEvents(){
 
   $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch($('#q').value); });
   $('#book-q').addEventListener('input', () => { BOOK.q = $('#book-q').value; renderBook(); });
+  const noteQ = $('#note-q');
+  if (noteQ) noteQ.addEventListener('input', () => { NOTE.q = noteQ.value; renderNotes(); });
+  const chatQ = $('#chat-q');
+  if (chatQ) chatQ.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); chatSend(); } });
   $('#modal').addEventListener('click', e => { if (e.target === $('#modal')) closeModal(); });
 }
 
