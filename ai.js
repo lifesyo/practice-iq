@@ -76,7 +76,7 @@ module.exports = async function handler(req, res) {
     + MODEL + ':generateContent?key=' + encodeURIComponent(apiKey);
 
   const sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
-  const RETRYABLE = { 429: 1, 500: 1, 502: 1, 503: 1, 504: 1 };
+  const RETRYABLE = { 500: 1, 502: 1, 503: 1, 504: 1 };
   const MAX_TRIES = 4;
 
   try {

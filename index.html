@@ -531,10 +531,12 @@ label.lbl .req{color:var(--acc);margin-left:3px}
         <button class="btn btn-ghost btn-sm" data-act="note-pick-file">📎 画像・PDFを選ぶ</button>
         <span id="note-files" class="hint" style="margin-left:8px"></span>
       </div>
+      <input id="note-src" class="field" placeholder="出典（任意・例：LINE / ChatGPT）" style="margin-top:8px">
       <div class="row2" style="margin-top:8px">
-        <input id="note-src" class="field" placeholder="出典（任意・例：LINE / ChatGPT）">
+        <button class="btn btn-ghost" data-act="note-manual">AIなしで整理（貼り付け要約向け）</button>
         <button class="btn btn-acc" data-act="note-summarize">AIで要約して整理</button>
       </div>
+      <div class="hint" style="margin-top:6px">ChatGPT等で要約した文章を貼り付けて「AIなしで整理」を押すと、見出し・箇条書き・カテゴリーを自動で振り分けます（API上限の影響を受けません）。</div>
       <div id="note-preview" style="margin-top:12px"></div>
     </div>
 
@@ -604,7 +606,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.5.0';
+const APP_VER = '1.6.0';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -2892,9 +2894,13 @@ async function callAI(messages, system, maxTokens){
       }
       let detail = '';
       try { const j = await res.json(); detail = j.error || j.message || ''; } catch (e) {}
+      // 429（無料枠の上限超過）はリトライしても無駄なので即終了し、案内を出す
+      if (res.status === 429){
+        throw new Error('無料AIの利用上限に達しました。少し時間をおくか、ChatGPT等で要約して「AIなしで整理」から貼り付けてください。');
+      }
       lastErr = new Error(detail || ('AI応答エラー (' + res.status + ')'));
-      // サーバー側混雑（502/503/429）なら待って再試行
-      if ((res.status === 502 || res.status === 503 || res.status === 429) && attempt < 2){
+      // サーバー側混雑（502/503）なら待って再試行
+      if ((res.status === 502 || res.status === 503) && attempt < 2){
         await sleep(800 * (attempt + 1));
         continue;
       }
@@ -3008,6 +3014,79 @@ async function summarizeNote(){
     box.innerHTML = '<div class="hint" style="color:var(--acc)">要約に失敗しました：' + esc(err.message)
       + '<br>（/api/ai と GEMINI_API_KEY の設定を確認してください）</div>';
   }
+}
+
+/* AIを使わず、貼り付けたテキストを見出し・箇条書きに自動整形して保存（API上限の影響なし） */
+function manualNote(){
+  const raw = ($('#note-paste').value || '').trim();
+  const src = ($('#note-src').value || '').trim();
+  if (!raw){ toast('整理する文章を貼り付けてください'); return; }
+
+  const sections = parseTextToSections(raw);
+  if (!sections.length){ toast('整理できる内容が見つかりませんでした'); return; }
+
+  // 先頭が「見出し無し・1項目だけ」で、後ろに見出し付きセクションがあるなら、それをタイトル扱いにする
+  let title = '';
+  if (sections.length > 1 && !sections[0].heading && sections[0].points.length === 1
+      && sections.slice(1).some(s => s.heading)){
+    title = sections[0].points[0].slice(0, 40);
+    sections.shift();
+  }
+
+  // タイトル未確定なら：最初の見出し→先頭要点→既定
+  if (!title){
+    const firstHead = sections.find(s => s.heading);
+    if (firstHead) title = firstHead.heading;
+    else if (sections[0].points.length) title = sections[0].points[0].slice(0, 24);
+  }
+  if (!title) title = '指導ノート';
+
+  // カテゴリー自動分類（本文全体から）
+  const allText = sections.map(s => s.heading + ' ' + s.points.join(' ')).join(' ');
+  const cats = _classifyCats('', [title, allText]);
+
+  _notePreview = normalizeNote({ title: title, source: src, raw: raw, sections: sections, cats: cats });
+  $('#note-preview').innerHTML = notePreviewHTML(_notePreview);
+}
+
+/* テキストを見出し＋箇条書きのセクション配列に変換（ローカル処理） */
+function parseTextToSections(text){
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  const secs = [];
+  let cur = null;
+  const pushPoint = (p) => {
+    p = p.trim();
+    if (!p) return;
+    if (!cur){ cur = { heading: '', points: [] }; secs.push(cur); }
+    cur.points.push(p);
+  };
+  const isHeading = (line) => {
+    const t = line.trim();
+    if (!t) return null;
+    // 明示記号：# ■ ●（先頭）／【…】／「N.」「N、」見出し番号／行末が「：」「:」で短め
+    let m;
+    if ((m = t.match(/^#+\s*(.+)$/))) return m[1].trim();
+    if ((m = t.match(/^[■●▶◆◎○・]\s*(.+：)\s*$/))) return m[1].replace(/[：:]\s*$/, '').trim();
+    if ((m = t.match(/^【(.+?)】\s*$/))) return m[1].trim();
+    if (/[：:]\s*$/.test(t) && t.length <= 26) return t.replace(/[：:]\s*$/, '').trim();
+    return null;
+  };
+  const stripBullet = (line) => line.replace(/^[\-–—・*•▪◦\u2022]\s*/, '').replace(/^[0-9０-９]+[\.\．、)）]\s*/, '').trim();
+
+  lines.forEach(raw => {
+    const line = raw.trim();
+    if (!line){ return; }
+    const h = isHeading(line);
+    if (h){
+      cur = { heading: h, points: [] };
+      secs.push(cur);
+      return;
+    }
+    // 箇条書き行 or 文。長い文は句点で分割して要点化しすぎないよう、そのまま1項目に
+    pushPoint(stripBullet(line));
+  });
+
+  return secs.filter(s => s.points.length || s.heading);
 }
 
 function noteSectionsHTML(n){
@@ -3411,6 +3490,7 @@ function bindEvents(){
       case 'adm-reset':     resetAll(); break;
       case 'adm-reclassify': reclassifyMenus(); break;
       case 'note-summarize': summarizeNote(); break;
+      case 'note-manual':    manualNote(); break;
       case 'note-pick-file': { const fi = $('#note-file'); if (fi) fi.click(); } break;
       case 'note-save':      saveNotePreview(); break;
       case 'note-discard':   discardNotePreview(); break;
