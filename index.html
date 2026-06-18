@@ -308,6 +308,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .notecard .nc-title{font-weight:800;font-size:15px;line-height:1.4}
 .notecard .nc-src{font-size:11px;color:var(--faint);margin-top:2px}
 .notecard .nc-sec{margin-top:9px}
+.notecard .nc-summary{margin-top:9px;font-size:14px;line-height:1.75;white-space:pre-wrap}
 .notecard .nc-lbl{font-size:11px;font-weight:800;color:var(--acc);letter-spacing:.05em;margin-bottom:3px}
 .notecard ul{margin:0;padding-left:18px}
 .notecard li{font-size:13.5px;line-height:1.7;margin:1px 0}
@@ -587,7 +588,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.2.1';
+const APP_VER = '1.2.2';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -2912,10 +2913,10 @@ async function summarizeNote(){
   const box = $('#note-preview');
   box.innerHTML = '<div class="hint">AIが要約・整理しています…</div>';
 
-  const sys = 'あなたはバスケットボール指導の知識整理アシスタントです。コーチが外部の相談（LINEやChatGPT等）で得た回答を、指導ノートとして整理します。'
+  const sys = 'あなたはバスケットボール指導の知識整理アシスタントです。コーチが外部の相談（LINEやChatGPT等）で得た回答を、指導ノートとして要約します。'
     + '認知→判断→選択→実行という構造的・思考的バスケの指導観に沿って、要点を簡潔にまとめてください。'
     + '出力は必ず次のJSONのみ（前後に説明やコードフェンス無し）：'
-    + '{"title":"短い見出し","summary":"2〜3文の要約","learnings":["学び1","学び2"],"cautions":["注意点1"],"coaching":["指導ポイント1","指導ポイント2"],"cats":["関連カテゴリー"],"kw":["検索キーワード"]}。'
+    + '{"title":"短い見出し","summary":"要点をまとめた要約（3〜6文程度。重要な内容は落とさず、簡潔に）","cats":["関連カテゴリー"],"kw":["検索キーワード"]}。'
     + 'cats は次から該当するものを選ぶ（複数可・無理に付けない）：' + allCats().join('、') + '。';
   const user = '次の相談回答を指導ノートに整理してください。\n\n' + raw;
 
@@ -2938,10 +2939,7 @@ function notePreviewHTML(n){
   return '<div class="note-prev">'
     + '<div class="nc-title">' + esc(n.title) + '</div>'
     + (n.cats.length ? '<div style="margin:6px 0">' + catChips(n) + '</div>' : '')
-    + noteSec('要約', [n.summary])
-    + noteSec('学び', n.learnings)
-    + noteSec('注意点', n.cautions)
-    + noteSec('指導ポイント', n.coaching)
+    + '<div class="nc-summary">' + esc(n.summary) + '</div>'
     + '<div style="display:flex;gap:8px;margin-top:12px">'
     +   '<button class="btn btn-acc" data-act="note-save">この内容で保存</button>'
     +   '<button class="btn btn-ghost" data-act="note-discard">破棄</button>'
@@ -2989,10 +2987,7 @@ function noteCard(n){
     +   '</div>'
     +   '<button class="btn btn-ghost btn-sm btn-danger" data-act="note-del" data-id="' + esc(n.id) + '">削除</button></div>'
     + (n.cats.length ? '<div style="margin:8px 0 2px">' + catChips(n) + '</div>' : '')
-    + noteSec('要約', [n.summary])
-    + noteSec('学び', n.learnings)
-    + noteSec('注意点', n.cautions)
-    + noteSec('指導ポイント', n.coaching)
+    + '<div class="nc-summary">' + esc(n.summary) + '</div>'
     + '</div>';
 }
 
