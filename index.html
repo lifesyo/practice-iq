@@ -606,7 +606,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.6.1';
+const APP_VER = '1.6.2';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -3088,18 +3088,31 @@ function parseTextToSections(text){
     .replace(/\*\*(.+?)\*\*/g, '$1')   // 文中の**強調**は通常テキストに
     .trim();
 
-  lines.forEach(raw => {
-    const line = raw.trim();
-    if (!line){ return; }
-    const h = isHeading(line);
-    if (h){
-      cur = { heading: h, points: [] };
-      secs.push(cur);
-      return;
+  // 箇条書き行か判定（* - ・ • ▪ ◦ や 数字. で始まる）
+  const isBulletLine = (s) => /^([\-–—・*•▪◦\u2022]\s+|[0-9０-９]+[\.\．、)）]\s+)/.test(String(s || '').trim());
+
+  for (let i = 0; i < lines.length; i++){
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    // 明示的な見出し記号がある場合
+    let h = isHeading(line);
+    if (h){ cur = { heading: h, points: [] }; secs.push(cur); continue; }
+
+    // 記号なしの見出し推定：自分が箇条書きでなく短め、かつ次の非空行が箇条書きなら見出し扱い
+    if (!isBulletLine(line) && line.length <= 30 && !/[。、]$/.test(line)){
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j++;
+      if (j < lines.length && isBulletLine(lines[j])){
+        cur = { heading: cleanHead(line), points: [] };
+        secs.push(cur);
+        continue;
+      }
     }
-    // 箇条書き行 or 文。長い文は句点で分割して要点化しすぎないよう、そのまま1項目に
+
+    // それ以外は箇条書き項目として追加
     pushPoint(stripBullet(line));
-  });
+  }
 
   return secs.filter(s => s.points.length || s.heading);
 }
