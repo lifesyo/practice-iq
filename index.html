@@ -528,16 +528,52 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.0.0';
+const APP_VER = '1.1.0';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
-const CATS = ['ドリブル','パス','シュート','リバウンド','ディフェンス','トランジション','1on1','2on2','3on3','チームオフェンス','チームディフェンス','体力向上'];
+/* ベースカテゴリー（並び順の基準）。これに辞書カテゴリー・ユーザー作成カテゴリーが続く。 */
+const BASE_CATS = ['ファンダメンタル','身体操作','アップ','認知トレーニング','ドリブル','パス','シュート','リバウンド','ディフェンス','トランジション','1on1','2on1','2on2','3on2','3on3','ピック&ロール','チームオフェンス','チームディフェンス','体力向上'];
+
+/* 既知カテゴリーの色。辞書外（ユーザー作成）は palette から自動割り当て。 */
 const CAT_COLORS = {
+  'ファンダメンタル':'#F59E0B','身体操作':'#22D3EE','アップ':'#4ADE80','認知トレーニング':'#F472B6',
   'ドリブル':'#FB923C','パス':'#38BDF8','シュート':'#FB7185','リバウンド':'#FBBF24',
-  'ディフェンス':'#60A5FA','トランジション':'#34D399','1on1':'#A78BFA','2on2':'#C084FC',
-  '3on3':'#E879F9','チームオフェンス':'#F87171','チームディフェンス':'#818CF8','体力向上':'#A3E635'
+  'ディフェンス':'#60A5FA','トランジション':'#34D399','1on1':'#A78BFA','2on1':'#8B5CF6','2on2':'#C084FC',
+  '3on2':'#D946EF','3on3':'#E879F9','ピック&ロール':'#F97316','チームオフェンス':'#F87171','チームディフェンス':'#818CF8','体力向上':'#A3E635'
 };
+
+/* ユーザーが取り込みで作成したカテゴリー（BASE_CATS にないもの）。localStorage に保存。 */
+let CUSTOM_CATS = [];
+try { const _cc = JSON.parse(localStorage.getItem('drilliq_custom_cats') || '[]'); if (Array.isArray(_cc)) CUSTOM_CATS = _cc; } catch (e) {}
+function saveCustomCats(){ try { localStorage.setItem('drilliq_custom_cats', JSON.stringify(CUSTOM_CATS)); } catch (e) {} }
+
+/* 現在有効な全カテゴリー（ベース＋ユーザー作成）。表示・フィルタ・ソートの基準。 */
+function allCats(){ return BASE_CATS.concat(CUSTOM_CATS); }
+/* 互換用：旧コードが参照していた CATS を動的配列として振る舞わせる */
+const CATS = new Proxy([], {
+  get(_t, prop){ const arr = allCats(); const v = arr[prop]; return typeof v === 'function' ? v.bind(arr) : v; },
+  has(_t, prop){ return prop in allCats(); }
+});
+
+/* 新しいカテゴリーを登録（既知になければ CUSTOM に追加） */
+function registerCat(name){
+  const c = String(name || '').trim();
+  if (!c) return '';
+  if (BASE_CATS.includes(c) || CUSTOM_CATS.includes(c)) return c;
+  CUSTOM_CATS.push(c); saveCustomCats();
+  return c;
+}
+
+/* カテゴリーの色：既知は固定、未知は名前ハッシュで palette から決定（毎回同じ色） */
+const _CAT_PALETTE = ['#FB923C','#38BDF8','#FB7185','#FBBF24','#60A5FA','#34D399','#A78BFA','#C084FC','#E879F9','#F87171','#818CF8','#A3E635','#22D3EE','#F472B6','#F97316','#4ADE80'];
+function catColor(cat){
+  if (CAT_COLORS[cat]) return CAT_COLORS[cat];
+  let h = 0; const s = String(cat || '');
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return _CAT_PALETTE[h % _CAT_PALETTE.length];
+}
+
 const GRADES = ['中学','高校'];
 
 // 検索用：類義語グループ（クエリに含まれていたら cats / kws をブースト）
@@ -970,6 +1006,24 @@ const Store = {
     }
     try { this.bookmarks = new Set(JSON.parse(localStorage.getItem(LS.bm) || '[]')); }
     catch (e) { this.bookmarks = new Set(); }
+
+    this.ensureCats();
+  },
+
+  /* 旧データ（cat のみ）に cats 配列を補い、未知カテゴリーを登録する */
+  ensureCats(){
+    let touched = false;
+    const fix = (arr) => (arr || []).forEach(it => {
+      if (!it) return;
+      if (!Array.isArray(it.cats) || !it.cats.length){
+        it.cats = it.cat ? [it.cat] : [];
+        if (it.cat) touched = true;
+      }
+      it.cats.forEach(registerCat);
+      if (!it.cat && it.cats.length){ it.cat = it.cats[0]; touched = true; }
+    });
+    fix(this.menus); fix(this.principles); fix(this.definitions);
+    if (touched) this.save();
   },
 
   save(){
@@ -991,6 +1045,7 @@ const Store = {
     if (Array.isArray(remote.principles))  this.principles  = this.upsert(this.principles, remote.principles);
     if (Array.isArray(remote.definitions)) this.definitions = this.upsert(this.definitions, remote.definitions);
     localStorage.setItem(LS.remotev, String(remote.version));
+    this.ensureCats();
     this.save();
     return true;
   },
@@ -1088,6 +1143,7 @@ const Sync = {
       if (Array.isArray(d.principles))  Store.principles  = d.principles;
       if (Array.isArray(d.definitions)) Store.definitions = d.definitions;
       localStorage.setItem(LS.remotev, String(+d.version || 0));
+      Store.ensureCats();
       Store.save();
       refreshViews();
       this.setStat();
@@ -1183,8 +1239,39 @@ function switchTab(name){
    共通レンダリング部品
    ============================================================ */
 function catChip(cat){
-  const c = CAT_COLORS[cat] || '#94A3B8';
+  const c = catColor(cat);
   return '<span class="catchip" style="color:' + c + ';background:' + c + '1f;border:1px solid ' + c + '4d">' + esc(cat) + '</span>';
+}
+
+/* 複数カテゴリーをまとめてチップ表示。cats 配列があればそれを、無ければ cat 単体を使う。 */
+function catChips(item){
+  const list = catsOf(item);
+  if (!list.length) return '';
+  return list.map(catChip).join('');
+}
+
+/* item（メニュー/原則/定義）の全カテゴリー配列を返す。旧データ（cat のみ）にも対応。 */
+function catsOf(item){
+  if (!item) return [];
+  if (Array.isArray(item.cats) && item.cats.length) return item.cats.filter(Boolean);
+  return item.cat ? [item.cat] : [];
+}
+/* item の主カテゴリー（表示・ソートの代表）。 */
+function primaryCat(item){
+  if (!item) return '';
+  if (item.cat) return item.cat;
+  const l = catsOf(item);
+  return l[0] || '';
+}
+
+/* item のカテゴリーのいずれかが list に含まれるか */
+function catsHit(item, list){ return catsOf(item).some(c => list.includes(c)); }
+
+/* 取り込みプレビュー用：BASE_CATS にない（=新規作成される）カテゴリーがあれば注記を出す */
+function newCatNote(item){
+  const news = catsOf(item).filter(c => !BASE_CATS.includes(c));
+  if (!news.length) return '';
+  return '<span class="tbadge" style="color:#FBBF24;border-color:#FBBF2455">＋新カテゴリー「' + esc(news.join('・')) + '」を作成</span>';
 }
 
 function timeBadge(min){
@@ -1234,7 +1321,7 @@ function resultCard(m, num, opts){
   if (num) h += '<div class="num">' + num + '</div>';
   h += '<div class="ttl">'
      +   '<div class="name">' + esc(m.name) + '</div>'
-     +   '<div class="meta">' + catChip(m.cat) + timeBadge(m.time)
+     +   '<div class="meta">' + catChips(m) + timeBadge(m.time)
      +     '<span class="tbadge">' + esc(peopleLabel(m)) + '</span>'
      +     '<span class="tbadge">' + esc(gradeLabel(m)) + '</span>'
      +   '</div>'
@@ -1270,7 +1357,7 @@ function principleCard(p){
   return '<div class="principle" data-act="open-prin" data-id="' + esc(p.id) + '">'
        +   '<div class="p-ttl">' + esc(p.title) + '</div>'
        +   '<div class="p-body">' + esc(p.body) + '</div>'
-       +   '<div style="margin-top:8px">' + catChip(p.cat) + '</div>'
+       +   '<div style="margin-top:8px">' + catChips(p) + '</div>'
        + '</div>';
 }
 
@@ -1278,7 +1365,7 @@ function definitionCard(d){
   return '<div class="defcard" data-act="open-def" data-id="' + esc(d.id) + '">'
        +   '<div class="df-term">' + esc(d.term) + '<span class="df-q">とは</span></div>'
        +   '<div class="df-body">' + esc(d.body) + '</div>'
-       +   (d.cat ? '<div style="margin-top:8px">' + catChip(d.cat) + '</div>' : '')
+       +   (catsOf(d).length ? '<div style="margin-top:8px">' + catChips(d) + '</div>' : '')
        + '</div>';
 }
 
@@ -1306,14 +1393,14 @@ function openPrinModal(id){
   if (!p) return;
   openModal('原則', '<div class="principle" style="margin:0"><div class="p-ttl">' + esc(p.title) + '</div>'
     + '<div class="p-body">' + esc(p.body) + '</div>'
-    + '<div style="margin-top:10px">' + catChip(p.cat) + '</div></div>');
+    + '<div style="margin-top:10px">' + catChips(p) + '</div></div>');
 }
 function openDefModal(id){
   const d = Store.definition(id);
   if (!d) return;
   openModal('定義', '<div class="defcard" style="margin:0"><div class="df-term">' + esc(d.term) + '<span class="df-q">とは</span></div>'
     + '<div class="df-body">' + esc(d.body) + '</div>'
-    + (d.cat ? '<div style="margin-top:10px">' + catChip(d.cat) + '</div>' : '') + '</div>');
+    + (catsOf(d).length ? '<div style="margin-top:10px">' + catChips(d) + '</div>' : '') + '</div>');
 }
 
 /* ============================================================
@@ -1397,7 +1484,7 @@ function scoreMenu(m, it, qBi){
   });
 
   /* カテゴリ一致 */
-  if (it.cats.includes(m.cat)) s += 8;
+  if (catsOf(m).some(c => it.cats.includes(c))) s += 8;
 
   /* 残り語の一致 */
   it.terms.forEach(t => {
@@ -1443,7 +1530,7 @@ function scorePrinciple(p, it, qBi){
     const kn = norm(k);
     if (kwN.some(x => x.includes(kn) || kn.includes(x)) || tN.includes(kn)) s += 10;
   });
-  if (it.cats.includes(p.cat)) s += 6;
+  if (catsOf(p).some(c => it.cats.includes(c))) s += 6;
   it.terms.forEach(t => {
     if (tN.includes(t)) s += 8;
     else if (kwN.some(x => x.includes(t))) s += 8;
@@ -1465,7 +1552,7 @@ function scoreDefinition(d, it, qBi){
     const kn = norm(k);
     if (kwN.some(x => x.includes(kn) || kn.includes(x)) || tN.includes(kn)) s += 10;
   });
-  if (it.cats.includes(d.cat)) s += 5;
+  if (catsOf(d).some(c => it.cats.includes(c))) s += 5;
   it.terms.forEach(t => {
     if (tN.includes(t)) s += 10;          // 用語そのものの一致は強く効かせる
     else if (kwN.some(x => x.includes(t))) s += 8;
@@ -1634,16 +1721,16 @@ function generatePlan(grade, people, total, focus){
 
   /* ウォームアップ */
   add('ウォームアップ', warm, firstNonEmpty(
-    rankCands(pool, m => kwHas(m, ['ウォームアップ', 'アップ', '低強度']), grade, warm),
-    rankCands(pool, m => ['ドリブル', 'パス'].includes(m.cat), grade, warm)
+    rankCands(pool, m => catsHit(m, ['アップ']) || kwHas(m, ['ウォームアップ', 'アップ', '低強度']), grade, warm),
+    rankCands(pool, m => catsHit(m, ['アップ', '身体操作', 'ドリブル', 'パス']), grade, warm)
   ));
 
   /* 基礎ファンダメンタル（75分以上） */
   if (fund){
-    const fcats = ['ドリブル', 'パス', 'シュート'].filter(c => !focus.includes(c));
+    const fcats = ['ファンダメンタル', 'ドリブル', 'パス', 'シュート'].filter(c => !focus.includes(c));
     add('基礎ファンダメンタル', fund, firstNonEmpty(
-      rankCands(pool, m => fcats.includes(m.cat), grade, fund),
-      rankCands(pool, m => ['ドリブル', 'パス', 'シュート'].includes(m.cat), grade, fund)
+      rankCands(pool, m => catsHit(m, fcats), grade, fund),
+      rankCands(pool, m => catsHit(m, ['ファンダメンタル', 'ドリブル', 'パス', 'シュート']), grade, fund)
     ));
   }
 
@@ -1653,21 +1740,21 @@ function generatePlan(grade, people, total, focus){
     const mins = (i === focus.length - 1)
       ? Math.max(10, focusTotal - per * (focus.length - 1))
       : per;
-    add('強化テーマ：' + c, mins, rankCands(pool, m => m.cat === c, grade, mins));
+    add('強化テーマ：' + c, mins, rankCands(pool, m => catsHit(m, [c]), grade, mins));
   });
 
   /* 対人スキル（60分以上・4人以上） */
   if (ss){
     add('対人スキル', ss, firstNonEmpty(
-      rankCands(pool, m => ['1on1', '2on2', '3on3'].includes(m.cat) && !focus.includes(m.cat), grade, ss),
-      rankCands(pool, m => ['1on1', '2on2', '3on3'].includes(m.cat), grade, ss)
+      rankCands(pool, m => catsHit(m, ['1on1', '2on1', '2on2', '3on2', '3on3']) && !catsHit(m, focus), grade, ss),
+      rankCands(pool, m => catsHit(m, ['1on1', '2on1', '2on2', '3on2', '3on3']), grade, ss)
     ));
   }
 
   /* ゲーム形式 */
   add('ゲーム形式', game, firstNonEmpty(
     rankCands(pool, m => kwHas(m, ['ゲーム形式', 'スクリメージ']), grade, game),
-    rankCands(pool, m => ['チームオフェンス', 'チームディフェンス', '3on3'].includes(m.cat) && (+m.time || 0) >= 20, grade, game)
+    rankCands(pool, m => catsHit(m, ['チームオフェンス', 'チームディフェンス', '3on3']) && (+m.time || 0) >= 20, grade, game)
   ));
 
   /* 合計を一致させる（最大ブロックで吸収） */
@@ -1720,7 +1807,7 @@ function renderPlan(){
     let bc = '<div class="b-lbl">' + esc(b.label) + '</div>';
     if (m){
       bc += '<div class="b-name">' + esc(m.name) + '</div>'
-          + '<div class="b-meta">' + catChip(m.cat)
+          + '<div class="b-meta">' + catChips(m)
           +   '<span class="tbadge">標準' + (+m.time || 0) + '<small>分</small></span>'
           +   '<span class="tbadge">' + esc(peopleLabel(m)) + '</span>'
           + '</div>'
@@ -1799,24 +1886,26 @@ function legacyCopy(txt){
 const BOOK = { mode: 'menus', cat: 'all', q: '' };
 
 function sortByCat(list){
+  const order = allCats();
+  const idx = c => { const i = order.indexOf(c); return i < 0 ? 999 : i; };
   list.sort((a, b) =>
-    (CATS.indexOf(a.cat) - CATS.indexOf(b.cat)) ||
+    (idx(primaryCat(a)) - idx(primaryCat(b))) ||
     String(a.name || a.title).localeCompare(String(b.name || b.title), 'ja'));
   return list;
 }
 
 const matchMenu = (m, q) =>
   norm(m.name).includes(q) || norm(m.purpose).includes(q) ||
-  norm(m.desc).includes(q) || norm(m.cat).includes(q) ||
+  norm(m.desc).includes(q) || catsOf(m).some(c => norm(c).includes(q)) ||
   (m.kw || []).some(k => norm(k).includes(q));
 
 const matchPrin = (p, q) =>
   norm(p.title).includes(q) || norm(p.body).includes(q) ||
-  norm(p.cat).includes(q) || (p.kw || []).some(k => norm(k).includes(q));
+  catsOf(p).some(c => norm(c).includes(q)) || (p.kw || []).some(k => norm(k).includes(q));
 
 const matchDef = (d, q) =>
   norm(d.term).includes(q) || norm(d.body).includes(q) ||
-  norm(d.cat).includes(q) || (d.kw || []).some(k => norm(k).includes(q));
+  catsOf(d).some(c => norm(c).includes(q)) || (d.kw || []).some(k => norm(k).includes(q));
 
 function mcardHTML(m){
   const on = Store.bookmarks.has(m.id);
@@ -1824,7 +1913,7 @@ function mcardHTML(m){
        +   '<div class="mc-main">'
        +     '<div class="mc-name">' + (hasVid(m) ? '<span class="ytdot" style="color:#F87171">▶</span>' : '') + esc(m.name) + '</div>'
        +     '<div class="mc-sub">' + esc(m.purpose) + '</div>'
-       +     '<div class="mc-meta">' + catChip(m.cat) + timeBadge(m.time) + '<span class="tbadge">' + esc(peopleLabel(m)) + '</span></div>'
+       +     '<div class="mc-meta">' + catChips(m) + timeBadge(m.time) + '<span class="tbadge">' + esc(peopleLabel(m)) + '</span></div>'
        +   '</div>'
        +   '<div class="mc-side"><button class="star' + (on ? ' on' : '') + '" data-act="bm" data-id="' + esc(m.id) + '">★</button></div>'
        + '</div>';
@@ -1836,7 +1925,15 @@ function renderBook(){
   const showCats = BOOK.mode !== 'bookmarks';
   $('#book-cats').style.display = showCats ? '' : 'none';
   if (showCats){
-    $('#book-cats').innerHTML = ['all'].concat(CATS).map(c =>
+    // 現在のモードのデータに実際に存在するカテゴリーだけを、ベース順で表示
+    const src = BOOK.mode === 'principles' ? Store.principles
+              : BOOK.mode === 'definitions' ? Store.definitions : Store.menus;
+    const used = new Set();
+    (src || []).forEach(it => catsOf(it).forEach(c => used.add(c)));
+    const order = allCats();
+    const usedCats = order.filter(c => used.has(c)).concat(Array.from(used).filter(c => !order.includes(c)));
+    if (BOOK.cat !== 'all' && !usedCats.includes(BOOK.cat)) BOOK.cat = 'all';
+    $('#book-cats').innerHTML = ['all'].concat(usedCats).map(c =>
       '<button class="chip' + (BOOK.cat === c ? ' on' : '') + '" data-act="book-cat" data-v="' + esc(c) + '">'
       + (c === 'all' ? 'すべて' : esc(c)) + '</button>').join('');
   }
@@ -1846,19 +1943,19 @@ function renderBook(){
 
   if (BOOK.mode === 'menus'){
     const list = sortByCat(Store.menus.filter(m =>
-      (BOOK.cat === 'all' || m.cat === BOOK.cat) && (!q || matchMenu(m, q))));
+      (BOOK.cat === 'all' || catsOf(m).includes(BOOK.cat)) && (!q || matchMenu(m, q))));
     n = list.length;
     html = list.map(mcardHTML).join('');
   }
   else if (BOOK.mode === 'principles'){
     const list = Store.principles.filter(p =>
-      (BOOK.cat === 'all' || p.cat === BOOK.cat) && (!q || matchPrin(p, q)));
+      (BOOK.cat === 'all' || catsOf(p).includes(BOOK.cat)) && (!q || matchPrin(p, q)));
     n = list.length;
     html = list.map(principleCard).join('');
   }
   else if (BOOK.mode === 'definitions'){
     const list = sortByCat(Store.definitions.filter(d =>
-      (BOOK.cat === 'all' || d.cat === BOOK.cat) && (!q || matchDef(d, q))).map(d =>
+      (BOOK.cat === 'all' || catsOf(d).includes(BOOK.cat)) && (!q || matchDef(d, q))).map(d =>
         Object.assign({ name: d.term }, d)));   // sortByCat用にnameを付与
     n = list.length;
     html = list.map(definitionCard).join('');
@@ -1910,7 +2007,7 @@ function renderAdmin(){
     body.innerHTML = list.map(m =>
       '<div class="adm-row"><div class="ar-main">'
       + '<div class="ar-name">' + esc(m.name) + '</div>'
-      + '<div class="ar-sub">' + esc(m.cat) + ' ・ ' + (+m.time || 0) + '分 ・ ' + esc(peopleLabel(m))
+      + '<div class="ar-sub">' + esc(catsOf(m).join('・') || '（なし）') + ' ・ ' + (+m.time || 0) + '分 ・ ' + esc(peopleLabel(m))
       + (hasVid(m) ? ' ・ ▶動画あり' : '') + '</div></div>'
       + '<div class="ar-acts">'
       + '<button class="btn btn-ghost btn-sm" data-act="adm-edit-menu" data-id="' + esc(m.id) + '">編集</button>'
@@ -1923,7 +2020,7 @@ function renderAdmin(){
     body.innerHTML = Store.principles.map(p =>
       '<div class="adm-row"><div class="ar-main">'
       + '<div class="ar-name">' + esc(p.title) + '</div>'
-      + '<div class="ar-sub">' + esc(p.cat) + '</div></div>'
+      + '<div class="ar-sub">' + esc(catsOf(p).join('・') || '（なし）') + '</div></div>'
       + '<div class="ar-acts">'
       + '<button class="btn btn-ghost btn-sm" data-act="adm-edit-prin" data-id="' + esc(p.id) + '">編集</button>'
       + '<button class="btn btn-ghost btn-sm btn-danger" data-act="adm-del-prin" data-id="' + esc(p.id) + '">削除</button>'
@@ -1935,7 +2032,7 @@ function renderAdmin(){
     body.innerHTML = Store.definitions.map(d =>
       '<div class="adm-row"><div class="ar-main">'
       + '<div class="ar-name">' + esc(d.term) + '<span style="color:var(--faint);font-weight:600">　とは</span></div>'
-      + '<div class="ar-sub">' + esc(d.cat || '（カテゴリーなし）') + '</div></div>'
+      + '<div class="ar-sub">' + esc(catsOf(d).join('・') || '（カテゴリーなし）') + '</div></div>'
       + '<div class="ar-acts">'
       + '<button class="btn btn-ghost btn-sm" data-act="adm-edit-def" data-id="' + esc(d.id) + '">編集</button>'
       + '<button class="btn btn-ghost btn-sm btn-danger" data-act="adm-del-def" data-id="' + esc(d.id) + '">削除</button>'
@@ -1982,19 +2079,71 @@ function renderAdmin(){
 const fld = (l, inner) => '<div style="margin-bottom:13px"><label class="lbl">' + l + '</label>' + inner + '</div>';
 const gchip = (v, on) => '<button type="button" class="chip' + (on ? ' on' : '') + '" data-tog data-v="' + v + '">' + v + '</button>';
 
+/* カテゴリー複数選択UI。選択中の値は data-catsel 要素の data-sel（・区切り）に保持する。 */
+function catMultiSelect(domId, selected){
+  const sel = (selected || []).filter(Boolean);
+  const cats = allCats();
+  const chips = cats.map(c => {
+    const on = sel.includes(c);
+    return '<button type="button" class="chip' + (on ? ' on' : '') + '" data-catchip data-v="' + esc(c) + '">' + esc(c) + '</button>';
+  }).join('');
+  return '<div id="' + domId + '" data-catsel data-sel="' + esc(sel.join('・')) + '">'
+    + '<div class="chips" data-catchips style="margin-bottom:8px">' + chips + '</div>'
+    + '<div style="display:flex;gap:8px">'
+    +   '<input class="field" data-catnew placeholder="新しいカテゴリー名を追加" style="flex:1">'
+    +   '<button type="button" class="btn btn-ghost btn-sm" data-act="cat-add-new">＋追加</button>'
+    + '</div></div>';
+}
+
+/* data-catsel 要素から選択中カテゴリー配列を読む */
+function readCatSelect(domId){
+  const root = $('#' + domId);
+  if (!root) return [];
+  return (root.dataset.sel || '').split('・').map(s => s.trim()).filter(Boolean);
+}
+
+/* チップのトグル：選択状態を data-sel に反映 */
+function toggleCatChip(chip){
+  const root = chip.closest('[data-catsel]');
+  if (!root) return;
+  const v = chip.dataset.v;
+  const sel = (root.dataset.sel || '').split('・').map(s => s.trim()).filter(Boolean);
+  const i = sel.indexOf(v);
+  if (i >= 0){ sel.splice(i, 1); chip.classList.remove('on'); }
+  else { sel.push(v); chip.classList.add('on'); }
+  root.dataset.sel = sel.join('・');
+}
+
+/* 新カテゴリーを入力欄から追加し、チップ群に反映して選択状態にする */
+function addNewCatToSelect(btn){
+  const root = btn.closest('[data-catsel]');
+  if (!root) return;
+  const input = root.querySelector('[data-catnew]');
+  const name = (input.value || '').trim();
+  if (!name){ toast('カテゴリー名を入力してください'); return; }
+  registerCat(name);
+  const sel = (root.dataset.sel || '').split('・').map(s => s.trim()).filter(Boolean);
+  if (!sel.includes(name)) sel.push(name);
+  root.dataset.sel = sel.join('・');
+  // チップ群を再描画（全カテゴリー＋選択状態）
+  const chipsBox = root.querySelector('[data-catchips]');
+  chipsBox.innerHTML = allCats().map(c =>
+    '<button type="button" class="chip' + (sel.includes(c) ? ' on' : '') + '" data-catchip data-v="' + esc(c) + '">' + esc(c) + '</button>'
+  ).join('');
+  input.value = '';
+}
+
 function openMenuForm(id){
   let m;
   if (id && id.indexOf('__ai_') === 0){ m = Store._aiTmp || {}; Store._aiEditIdx = +id.slice(5); }
   else { m = id ? (Store.menu(id) || {}) : {}; Store._aiEditIdx = -1; }
   const gr = m.grades || ['中学', '高校'];
-  const catOpts = CATS.map(c => '<option' + (m.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
+  const selCats = catsOf(m);
 
   const h = '<input type="hidden" id="f-id" value="' + esc(m.id || '') + '">'
     + fld('練習名 <span class="req">必須</span>', '<input id="f-name" class="field" value="' + esc(m.name || '') + '" placeholder="例：3メン速攻→バック2">')
-    + '<div class="row2">'
-    +   fld('カテゴリー', '<select id="f-cat" class="field">' + catOpts + '</select>')
-    +   fld('所要時間（分）', '<input id="f-time" class="field" type="number" inputmode="numeric" value="' + (+m.time || 15) + '">')
-    + '</div>'
+    + fld('カテゴリー（複数選択可）', catMultiSelect('f-cats', selCats))
+    + fld('所要時間（分）', '<input id="f-time" class="field" type="number" inputmode="numeric" value="' + (+m.time || 15) + '">')
     + fld('目的', '<input id="f-purpose" class="field" value="' + esc(m.purpose || '') + '" placeholder="この練習で何を身につけるか">')
     + fld('対象学年', '<div class="chips" id="f-grades">' + gchip('中学', gr.includes('中学')) + gchip('高校', gr.includes('高校')) + '</div>')
     + '<div class="row2">'
@@ -2023,10 +2172,13 @@ function saveMenu(){
   if (!grades.length) grades = ['中学', '高校'];
 
   const lines = v => v.split('\n').map(s => s.trim()).filter(Boolean);
+  let cats = readCatSelect('f-cats');
+  if (!cats.length) cats = ['ファンダメンタル'];
   const m = {
     id: id || uid('u'),
     name,
-    cat: $('#f-cat').value,
+    cat: cats[0],
+    cats,
     purpose: $('#f-purpose').value.trim(),
     grades,
     minP: Math.max(1, +$('#f-minp').value || 1),
@@ -2074,10 +2226,9 @@ function openPrinForm(id){
   let p;
   if (id && id.indexOf('__ai_') === 0){ p = Store._aiTmp || {}; Store._aiEditIdx = +id.slice(5); }
   else { p = id ? (Store.principle(id) || {}) : {}; Store._aiEditIdx = -1; }
-  const catOpts = CATS.map(c => '<option' + (p.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
   const h = '<input type="hidden" id="f-pid" value="' + esc(p.id || '') + '">'
     + fld('原則のタイトル <span class="req">必須</span>', '<input id="f-pt" class="field" value="' + esc(p.title || '') + '" placeholder="例：スペーシングの原則">')
-    + fld('カテゴリー', '<select id="f-pcat" class="field">' + catOpts + '</select>')
+    + fld('カテゴリー（複数選択可）', catMultiSelect('f-pcats', catsOf(p)))
     + fld('内容 <span class="req">必須</span>', '<textarea id="f-pbody" class="field" rows="6" placeholder="チームで共有したい考え方・基準">' + esc(p.body || '') + '</textarea>')
     + fld('検索キーワード（スペース区切り）', '<input id="f-pkw" class="field" value="' + esc((p.kw || []).join(' ')) + '" placeholder="例：スペーシング 距離 合わせ">')
     + '<button class="btn btn-acc btn-block" data-act="save-prin">保存する</button>';
@@ -2090,10 +2241,12 @@ function savePrin(){
   const body  = $('#f-pbody').value.trim();
   if (!title){ toast('タイトルを入力してください'); return; }
   if (!body){ toast('内容を入力してください'); return; }
+  const pcats = readCatSelect('f-pcats');
   const p = {
     id: id || uid('upr'),
     title,
-    cat: $('#f-pcat').value,
+    cat: pcats[0] || '',
+    cats: pcats,
     body,
     kw: $('#f-pkw').value.split(/[、,\s　]+/).map(s => s.trim()).filter(Boolean)
   };
@@ -2131,11 +2284,9 @@ function openDefForm(id){
   let d;
   if (id && id.indexOf('__ai_') === 0){ d = Store._aiTmp || {}; Store._aiEditIdx = +id.slice(5); }
   else { d = id ? (Store.definition(id) || {}) : {}; Store._aiEditIdx = -1; }
-  const catOpts = '<option value=""' + (!d.cat ? ' selected' : '') + '>（カテゴリーなし）</option>'
-    + CATS.map(c => '<option' + (d.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
   const h = '<input type="hidden" id="f-did" value="' + esc(d.id || '') + '">'
     + fld('用語・見出し <span class="req">必須</span>', '<input id="f-dterm" class="field" value="' + esc(d.term || '') + '" placeholder="例：いいパス（「〜とは」が自動で付きます）">')
-    + fld('カテゴリー（任意）', '<select id="f-dcat" class="field">' + catOpts + '</select>')
+    + fld('カテゴリー（任意・複数選択可）', catMultiSelect('f-dcats', catsOf(d)))
     + fld('定義・説明 <span class="req">必須</span>', '<textarea id="f-dbody" class="field" rows="6" placeholder="「〜とは…である」に続く形で、チームで揃えたい基準・考え方を書く">' + esc(d.body || '') + '</textarea>')
     + fld('検索キーワード（スペース区切り）', '<input id="f-dkw" class="field" value="' + esc((d.kw || []).join(' ')) + '" placeholder="例：パス タイミング 判断">')
     + '<button class="btn btn-acc btn-block" data-act="save-def">保存する</button>';
@@ -2148,10 +2299,12 @@ function saveDef(){
   const body = $('#f-dbody').value.trim();
   if (!term){ toast('用語・見出しを入力してください'); return; }
   if (!body){ toast('定義・説明を入力してください'); return; }
+  const dcats = readCatSelect('f-dcats');
   const d = {
     id: id || uid('udf'),
     term,
-    cat: $('#f-dcat').value || '',
+    cat: dcats[0] || '',
+    cats: dcats,
     body,
     kw: $('#f-dkw').value.split(/[、,\s　]+/).map(s => s.trim()).filter(Boolean)
   };
@@ -2221,6 +2374,7 @@ function importFile(input){
         if (Array.isArray(j.principles))  Store.principles  = j.principles;
         if (Array.isArray(j.definitions)) Store.definitions = j.definitions;
       }
+      Store.ensureCats();
       Store.save();
       Sync.push();
       renderAdmin();
@@ -2268,10 +2422,18 @@ function classifyRecord(o){
 }
 
 // カテゴリー判定用のキーワード辞書（重み付き）。長く具体的な語ほど高スコア。
+// 1メニューが複数カテゴリーに該当しうるので、スコアが閾値を超えたものは全て採用する。
 const _CAT_RULES = [
-  // 人数系（最優先・専用判定で先に処理されるが保険として高重み）
+  // 育成テーマ系
+  ['ファンダメンタル', [['ファンダメンタル',6],['ファンダメンタルズ',6],['基礎基本',5],['基本動作',5],['基礎練習',4],['ピボット',4],['ミートステップ',4],['ストップ',2],['基礎',3],['基本',2]]],
+  ['身体操作', [['身体操作',6],['ボディコントロール',6],['コーディネーション',5],['動きづくり',5],['ステップワーク',4],['バランス',3],['股関節',3],['体の使い方',5],['姿勢',2]]],
+  ['アップ', [['ウォームアップ',6],['ウォーミングアップ',6],['アップ',4],['ダイナミックストレッチ',5],['準備運動',5],['可動域',3],['動的ストレッチ',5]]],
+  ['認知トレーニング', [['認知トレーニング',6],['認知',4],['判断力',5],['状況判断',5],['視野',4],['ディシジョン',4],['周辺視野',5],['リアクション',3],['読み',3],['予測',3]]],
+  // 人数系（専用判定で先に拾うが保険として高重み）
   ['3on3', [['3on3',6],['3対3',6],['3vs3',6],['スリーオンスリー',6],['スリーメン',5],['3人制',5]]],
+  ['3on2', [['3on2',6],['3対2',6],['3vs2',6],['スリーオンツー',6]]],
   ['2on2', [['2on2',6],['2対2',6],['2vs2',6],['ツーメン',5],['2人組の',3]]],
+  ['2on1', [['2on1',6],['2対1',6],['2vs1',6],['ツーオンワン',6]]],
   ['1on1', [['1on1',6],['1対1',6],['1vs1',6],['ワンオンワン',6],['アイソレーション',4],['ミート1',4]]],
   // スキル系
   ['ドリブル', [['ボールハンドリング',5],['ハンドリング',4],['ドリブル',4],['チェンジ',2],['レッグスルー',3],['ビハインド',2],['クロスオーバー',3]]],
@@ -2281,53 +2443,86 @@ const _CAT_RULES = [
   // ディフェンス系（個人）
   ['ディフェンス', [['クローズアウト',5],['シェルディフェンス',5],['スタンス',3],['スライド',3],['フットワーク',3],['ヘルプ',3],['ローテーション',3],['ボールマン',3],['オンボール',3],['守備',3],['ディフェンス',3]]],
   // トランジション
-  ['トランジション', [['トランジション',5],['ファストブレイク',5],['アウトナンバー',5],['速攻',4],['アーリーオフェンス',5],['2on1',4],['3on2',4],['切り替え',3],['走るバスケ',3]]],
+  ['トランジション', [['トランジション',5],['ファストブレイク',5],['アウトナンバー',5],['速攻',4],['アーリーオフェンス',5],['切り替え',3],['走るバスケ',3]]],
+  // ピック&ロール（独立カテゴリー）
+  ['ピック&ロール', [['ピックアンドロール',6],['ピック＆ロール',6],['ピック&ロール',6],['pnr',5],['ボールスクリーン',5],['オンボールスクリーン',5],['ハンドオフ',3],['dho',3]]],
   // チーム系
-  ['チームオフェンス', [['モーションオフェンス',6],['ゾーンアタック',6],['セットオフェンス',6],['5アウト',5],['スペーシング',4],['ピックアンドロール',4],['ピック＆ロール',4],['ハンドオフ',4],['オフボール',3],['5on5',3],['4on4',2],['ハーフコートオフェンス',5],['カッティング',3]]],
-  ['チームディフェンス', [['チームディフェンス',6],['ゾーンディフェンス',6],['2-3ゾーン',6],['3-2ゾーン',6],['1-3-1',6],['マンツーマンディフェンス',5],['ピック&ロールディフェンス',5],['ピックの守り方',5],['スクリーンディフェンス',5],['ヘッジ',3],['ICE',3],['ドロップ',2]]],
+  ['チームオフェンス', [['モーションオフェンス',6],['ゾーンアタック',6],['セットオフェンス',6],['5アウト',5],['スペーシング',4],['オフボール',3],['5on5',3],['4on4',2],['ハーフコートオフェンス',5],['カッティング',3]]],
+  ['チームディフェンス', [['チームディフェンス',6],['ゾーンディフェンス',6],['2-3ゾーン',6],['3-2ゾーン',6],['1-3-1',6],['マンツーマンディフェンス',5],['スクリーンディフェンス',4],['ヘッジ',3],['ICE',3],['ドロップ',2]]],
   // フィジカル
   ['体力向上', [['コンディショニング',5],['スタミナ',4],['持久力',4],['走り込み',4],['フィジカル',3],['アジリティ',3],['ライン走',4],['体力',3],['走力',3]]],
 ];
 
-// cat 文字列 + 名前/目的/説明/キーワードを総合してカテゴリーを判定する。
-// 戻り値が空文字なら「カテゴリーなし（未分類）」。
-function _classifyCat(rawCat, ctxParts){
+// 採用閾値：主カテゴリーのスコアに対しこの割合以上のものを副カテゴリーとして併記
+const _CAT_SECONDARY_RATIO = 0.6;
+const _CAT_SECONDARY_MIN = 4;   // 副カテゴリーの最低スコア
+const _CAT_MAX = 3;             // 1メニューに付ける最大カテゴリー数
+
+// cat 文字列 + 名前/目的/説明/キーワードを総合して、該当カテゴリーの配列を返す。
+// 先頭が主カテゴリー。空配列なら未分類。明示 cat が辞書外でも新カテゴリーとして採用。
+function _classifyCats(rawCat, ctxParts){
   const raw = String(rawCat || '').trim();
-  // 1) 明示 cat が正規カテゴリーそのものなら最優先で尊重
-  if (CATS.includes(raw)) return raw;
+  const out = [];
 
-  // 判定対象テキスト（cat も含める）を連結
+  // 明示 cat が既知カテゴリーなら最優先で先頭に
+  const rawKnown = raw && (BASE_CATS.includes(raw) || CUSTOM_CATS.includes(raw));
+  if (rawKnown) out.push(raw);
+
   const text = [raw].concat(ctxParts || []).map(s => String(s || '')).join(' ').toLowerCase();
-  if (!text.trim()) return '';
 
-  // 2) 人数表記を最優先で検出（3→2→1 の順で、大きい数を優先）
-  if (/3\s*(on|対|vs|v)\s*3|3on3|3対3/.test(text)) return '3on3';
-  if (/2\s*(on|対|vs|v)\s*2|2on2|2対2/.test(text)) return '2on2';
-  if (/1\s*(on|対|vs|v)\s*1|1on1|1対1/.test(text)) return '1on1';
+  // 人数表記を強めのスコアとして注入（主役になりやすいが他カテゴリーの併記も許す）
+  const forced = {};
+  if (/3\s*(on|対|vs|v)\s*3|3on3|3対3/.test(text)) forced['3on3'] = 9;
+  if (/3\s*(on|対|vs|v)\s*2|3on2|3対2/.test(text)) forced['3on2'] = 9;
+  if (/2\s*(on|対|vs|v)\s*2|2on2|2対2/.test(text)) forced['2on2'] = 9;
+  if (/2\s*(on|対|vs|v)\s*1|2on1|2対1/.test(text)) forced['2on1'] = 9;
+  if (/1\s*(on|対|vs|v)\s*1|1on1|1対1/.test(text)) forced['1on1'] = 9;
 
-  // 3) キーワード辞書でスコアリング
-  const score = {};
-  for (const [cat, rules] of _CAT_RULES){
-    for (const [word, w] of rules){
-      if (text.includes(String(word).toLowerCase())) score[cat] = (score[cat] || 0) + w;
+  // 辞書スコアリング
+  const score = Object.assign({}, forced);
+  if (text.trim()){
+    for (const [cat, rules] of _CAT_RULES){
+      for (const [word, w] of rules){
+        if (text.includes(String(word).toLowerCase())) score[cat] = (score[cat] || 0) + w;
+      }
     }
   }
-  let best = '', bestScore = 0;
-  for (const cat of CATS){
-    if ((score[cat] || 0) > bestScore){ best = cat; bestScore = score[cat]; }
+
+  // スコア順に並べ、主カテゴリー＋閾値を超える副カテゴリーを採用
+  const ranked = Object.keys(score).sort((a, b) => score[b] - score[a]);
+  if (ranked.length){
+    const top = score[ranked[0]];
+    const threshold = Math.max(_CAT_SECONDARY_MIN, top * _CAT_SECONDARY_RATIO);
+    for (const cat of ranked){
+      if (out.includes(cat)) continue;
+      if (cat === ranked[0] || score[cat] >= threshold) out.push(cat);
+      if (out.length >= _CAT_MAX) break;
+    }
   }
-  if (best) return best;
 
-  // 4) 最後に、raw が正規カテゴリーを部分的に含むかだけ確認（旧挙動の保険）
-  const partial = CATS.find(x => raw.includes(x));
-  if (partial) return partial;
+  // 明示 cat が辞書外でも空でなければ新カテゴリーとして採用（先頭）
+  if (!rawKnown && raw && !out.includes(raw)){
+    registerCat(raw);
+    out.unshift(raw);
+  }
 
-  // 5) どれにも当たらなければ未分類（シュートへの誤強制をやめる）
-  return '';
+  // 部分一致の保険（既知カテゴリー名を raw が含む）
+  if (!out.length && raw){
+    const partial = allCats().find(x => raw.includes(x));
+    if (partial) out.push(partial);
+  }
+
+  return out.slice(0, _CAT_MAX);
+}
+
+// 主カテゴリー（単一）を返す。後方互換。
+function _classifyCat(rawCat, ctxParts){
+  const l = _classifyCats(rawCat, ctxParts);
+  return l[0] || '';
 }
 
 // メニュー用：未分類のときだけ穏当なデフォルトを当てる（空を嫌う画面向け）
-const _normCat = (c, ctx) => _classifyCat(c, ctx) || 'ドリブル';
+const _normCat = (c, ctx) => _classifyCat(c, ctx) || 'ファンダメンタル';
 
 function normalizeMenu(o){
   const grRaw = o.grades || o.grade || o.対象学年 || ['中学', '高校'];
@@ -2344,15 +2539,25 @@ function normalizeMenu(o){
   }
   if (maxP < minP) maxP = minP;
 
+  const _menuCtx = [
+    o.name, o.title, o.練習名,
+    o.purpose, o.目的,
+    o.desc, o.description, o.練習説明, o.実施方法, o.method,
+    o.kw, o.keywords, o.キーワード, o.tags
+  ];
+  // 明示的に複数カテゴリーが来ていれば（cats / categories 配列）それを尊重しつつ登録
+  const explicitCats = _arr(o.cats || o.categories || o.カテゴリー一覧).map(c => registerCat(c)).filter(Boolean);
+  let cats = explicitCats.length
+    ? explicitCats
+    : _classifyCats(o.cat || o.category || o.カテゴリー || o.カテゴリ, _menuCtx);
+  if (!cats.length) cats = ['ファンダメンタル'];
+  cats = Array.from(new Set(cats)).slice(0, _CAT_MAX);
+
   return {
     id: o.id || uid('ai'),
     name: String(o.name || o.title || o.練習名 || '名称未設定').trim(),
-    cat: _normCat(o.cat || o.category || o.カテゴリー || o.カテゴリ, [
-      o.name, o.title, o.練習名,
-      o.purpose, o.目的,
-      o.desc, o.description, o.練習説明, o.実施方法, o.method,
-      o.kw, o.keywords, o.キーワード, o.tags
-    ]),
+    cat: cats[0],
+    cats,
     purpose: String(o.purpose || o.目的 || '').trim(),
     grades,
     minP, maxP,
@@ -2367,14 +2572,17 @@ function normalizeMenu(o){
 }
 
 function normalizePrin(o){
+  const cats = _arr(o.cats || o.categories).map(c => registerCat(c)).filter(Boolean);
+  const out = cats.length ? cats : _classifyCats(o.cat || o.category || o.カテゴリー, [
+    o.title, o.name, o.原則,
+    o.body, o.principle, o.内容, o.desc, o.description,
+    o.kw, o.keywords, o.キーワード
+  ]);
   return {
     id: o.id || uid('aipr'),
     title: String(o.title || o.name || o.タイトル || o.原則 || '原則').trim(),
-    cat: _classifyCat(o.cat || o.category || o.カテゴリー, [
-      o.title, o.name, o.原則,
-      o.body, o.principle, o.内容, o.desc, o.description,
-      o.kw, o.keywords, o.キーワード
-    ]),
+    cat: out[0] || '',
+    cats: out,
     body: String(o.body || o.principle || o.内容 || o.desc || o.description || '').trim(),
     kw: _kw(o.kw || o.keywords || o.キーワード)
   };
@@ -2382,14 +2590,17 @@ function normalizePrin(o){
 
 function normalizeDef(o){
   const cRaw = o.cat || o.category || o.カテゴリー || '';
+  const cats = _arr(o.cats || o.categories).map(c => registerCat(c)).filter(Boolean);
+  const out = cats.length ? cats : _classifyCats(cRaw, [
+    o.term, o.用語, o.見出し, o.title, o.name,
+    o.body, o.定義, o.意味, o.説明, o.desc, o.description,
+    o.kw, o.keywords, o.キーワード
+  ]);
   return {
     id: o.id || uid('adf'),
     term: String(o.term || o.用語 || o.見出し || o.title || o.name || '用語').trim().replace(/とは$/, ''),
-    cat: _classifyCat(cRaw, [
-      o.term, o.用語, o.見出し, o.title, o.name,
-      o.body, o.定義, o.意味, o.説明, o.desc, o.description,
-      o.kw, o.keywords, o.キーワード
-    ]),     // 定義はカテゴリーなしも許容
+    cat: out[0] || '',     // 定義はカテゴリーなしも許容
+    cats: out,
     body: String(o.body || o.定義 || o.意味 || o.説明 || o.desc || o.description || '').trim(),
     kw: _kw(o.kw || o.keywords || o.キーワード)
   };
@@ -2448,15 +2659,15 @@ function renderAIPreview(){
     const o = s.obj;
     let badge, sub, title;
     if (s.kind === 'menu'){
-      badge = catChip(o.cat) + '<span class="tbadge">' + o.time + '<small>分</small></span><span class="tbadge">' + esc(peopleLabel(o)) + '</span>';
+      badge = catChips(o) + newCatNote(o) + '<span class="tbadge">' + o.time + '<small>分</small></span><span class="tbadge">' + esc(peopleLabel(o)) + '</span>';
       sub = esc(o.purpose || o.desc || '（説明なし）');
       title = esc(o.name);
     } else if (s.kind === 'definition'){
-      badge = '<span class="catchip" style="color:#A78BFA;background:#A78BFA1f;border:1px solid #A78BFA4d">定義</span>' + (o.cat ? catChip(o.cat) : '');
+      badge = '<span class="catchip" style="color:#A78BFA;background:#A78BFA1f;border:1px solid #A78BFA4d">定義</span>' + catChips(o) + newCatNote(o);
       sub = esc(o.body || '（内容なし）');
       title = esc(o.term) + '<span style="color:var(--faint);font-weight:600">　とは</span>';
     } else {
-      badge = '<span class="catchip" style="color:#7FB3FF;background:#7FB3FF1f;border:1px solid #7FB3FF4d">原則</span>' + catChip(o.cat);
+      badge = '<span class="catchip" style="color:#7FB3FF;background:#7FB3FF1f;border:1px solid #7FB3FF4d">原則</span>' + catChips(o) + newCatNote(o);
       sub = esc(o.body || '（内容なし）');
       title = esc(o.title);
     }
@@ -2525,6 +2736,8 @@ function reclassifyMenus(){
   const list = Store.menus || [];
   if (!list.length){ toast('メニューがありません'); return; }
 
+  const eq = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
   // 変更プレビューを作る
   const changes = [];
   list.forEach(m => {
@@ -2534,9 +2747,14 @@ function reclassifyMenus(){
       Array.isArray(m.mistakes) ? m.mistakes.join(' ') : m.mistakes,
       Array.isArray(m.kw) ? m.kw.join(' ') : m.kw
     ];
-    // 既存 cat は手がかりとして渡すが、内容判定を優先させたいので cat は文脈側に入れる
-    const next = _classifyCat('', [m.cat].concat(ctx)) || m.cat;
-    if (next && next !== m.cat) changes.push({ id: m.id, name: m.name, from: m.cat || '（なし）', to: next, next });
+    // 既存 cat も手がかりとして文脈に含めて、内容から複数カテゴリーを判定し直す
+    let next = _classifyCats('', catsOf(m).concat(ctx));
+    if (!next.length) next = catsOf(m);            // 手がかりが無ければ現状維持
+    next = Array.from(new Set(next)).slice(0, _CAT_MAX);
+    const cur = catsOf(m);
+    if (next.length && !eq(cur, next)){
+      changes.push({ id: m.id, name: m.name, from: cur.join('・') || '（なし）', to: next.join('・'), next });
+    }
   });
 
   if (!changes.length){ toast('修正が必要なメニューはありませんでした'); return; }
@@ -2547,7 +2765,9 @@ function reclassifyMenus(){
   if (!confirm(changes.length + ' 件のカテゴリーを修正します。\n\n' + preview + more + '\n\nこの内容で実行しますか？')) return;
 
   const byId = new Map(changes.map(c => [c.id, c.next]));
-  Store.menus = list.map(m => byId.has(m.id) ? Object.assign({}, m, { cat: byId.get(m.id) }) : m);
+  Store.menus = list.map(m => byId.has(m.id)
+    ? Object.assign({}, m, { cats: byId.get(m.id), cat: byId.get(m.id)[0] })
+    : m);
   Store.save();
   Sync.push();
   toast(changes.length + ' 件のカテゴリーを修正しました');
@@ -2560,7 +2780,7 @@ function reclassifyMenus(){
    ============================================================ */
 function bindEvents(){
   document.addEventListener('click', e => {
-    const el = e.target.closest('[data-act],[data-tab],[data-mode],[data-amode],[data-chip],[data-tog]');
+    const el = e.target.closest('[data-act],[data-tab],[data-mode],[data-amode],[data-chip],[data-tog],[data-catchip]');
     if (!el) return;
 
     if (el.dataset.tab){ switchTab(el.dataset.tab); return; }
@@ -2568,6 +2788,8 @@ function bindEvents(){
     if (el.dataset.amode){ ADMIN.mode = el.dataset.amode; renderAdmin(); return; }
 
     if ('tog' in el.dataset){ el.classList.toggle('on'); return; }
+
+    if ('catchip' in el.dataset){ toggleCatChip(el); return; }
 
     if (el.dataset.chip === 'time'){
       $$('#pl-time-chips .chip').forEach(c => c.classList.toggle('on', c === el));
@@ -2591,6 +2813,7 @@ function bindEvents(){
       case 'open-def':      openDefModal(el.dataset.id); break;
       case 'modal-close':   closeModal(); break;
       case 'book-cat':      BOOK.cat = el.dataset.v; renderBook(); break;
+      case 'cat-add-new':   addNewCatToSelect(el); break;
       case 'gen-plan':      onGenPlan(); break;
       case 'swap':          swapBlock(+el.dataset.bi); break;
       case 'copy-plan':     copyPlanText(); break;
@@ -2642,7 +2865,7 @@ function init(){
   $('#pl-time-chips').innerHTML = PLAN_TIMES.map(t =>
     '<button class="chip' + (t === 90 ? ' on' : '') + '" data-chip="time" data-v="' + t + '">' + t + '分</button>').join('');
 
-  $('#pl-focus-chips').innerHTML = CATS.map(c =>
+  $('#pl-focus-chips').innerHTML = allCats().map(c =>
     '<button class="chip" data-chip="focus" data-v="' + esc(c) + '">' + esc(c) + '</button>').join('');
 
   bindEvents();
