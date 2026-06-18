@@ -1959,6 +1959,10 @@ function renderAdmin(){
       + '<button class="btn btn-acc btn-block" data-act="ai-preview" style="margin-top:10px">内容を確認する</button>'
       + '<div id="ai-preview" style="margin-top:12px"></div></div>'
 
+      + '<div class="card"><label class="lbl">カテゴリーを一括で見直す</label>'
+      + '<div class="hint">登録済みのすべての練習メニューを、名前・目的・説明・キーワードの内容から判定し直して、ふさわしいカテゴリーに修正します。実行前に変更内容を確認できます。手動で直した正しい分類は、判定が一致すればそのまま残ります。</div>'
+      + '<button class="btn btn-block" data-act="adm-reclassify" style="margin-top:12px">🏷 カテゴリーを自動で修正する</button></div>'
+
       + '<div class="card"><label class="lbl">バックアップ</label>'
       + '<div class="hint">念のためのバックアップとして、全データを data.json ファイルに書き出し／読み込みできます。読み込んだ内容もクラウドへ同期されます。</div>'
       + '<input type="file" id="imp-file" accept=".json,application/json" style="display:none">'
@@ -2263,7 +2267,67 @@ function classifyRecord(o){
   return 'menu';
 }
 
-const _normCat = c => CATS.includes(c) ? c : (CATS.find(x => String(c || '').includes(x)) || 'シュート');
+// カテゴリー判定用のキーワード辞書（重み付き）。長く具体的な語ほど高スコア。
+const _CAT_RULES = [
+  // 人数系（最優先・専用判定で先に処理されるが保険として高重み）
+  ['3on3', [['3on3',6],['3対3',6],['3vs3',6],['スリーオンスリー',6],['スリーメン',5],['3人制',5]]],
+  ['2on2', [['2on2',6],['2対2',6],['2vs2',6],['ツーメン',5],['2人組の',3]]],
+  ['1on1', [['1on1',6],['1対1',6],['1vs1',6],['ワンオンワン',6],['アイソレーション',4],['ミート1',4]]],
+  // スキル系
+  ['ドリブル', [['ボールハンドリング',5],['ハンドリング',4],['ドリブル',4],['チェンジ',2],['レッグスルー',3],['ビハインド',2],['クロスオーバー',3]]],
+  ['パス', [['パッシング',4],['パス回し',4],['パス＆',3],['対面パス',4],['チェストパス',4],['バウンズパス',4],['ミート',2],['パス',3]]],
+  ['シュート', [['シューティング',5],['キャッチ＆シュート',5],['フォームシュート',5],['レイアップ',4],['フィニッシュ',3],['3ポイント',4],['スリーポイント',4],['ジャンプシュート',4],['ミドルシュート',4],['シュート',3]]],
+  ['リバウンド', [['ボックスアウト',5],['スクリーンアウト',5],['リバウンド',4],['ティップ',2]]],
+  // ディフェンス系（個人）
+  ['ディフェンス', [['クローズアウト',5],['シェルディフェンス',5],['スタンス',3],['スライド',3],['フットワーク',3],['ヘルプ',3],['ローテーション',3],['ボールマン',3],['オンボール',3],['守備',3],['ディフェンス',3]]],
+  // トランジション
+  ['トランジション', [['トランジション',5],['ファストブレイク',5],['アウトナンバー',5],['速攻',4],['アーリーオフェンス',5],['2on1',4],['3on2',4],['切り替え',3],['走るバスケ',3]]],
+  // チーム系
+  ['チームオフェンス', [['モーションオフェンス',6],['ゾーンアタック',6],['セットオフェンス',6],['5アウト',5],['スペーシング',4],['ピックアンドロール',4],['ピック＆ロール',4],['ハンドオフ',4],['オフボール',3],['5on5',3],['4on4',2],['ハーフコートオフェンス',5],['カッティング',3]]],
+  ['チームディフェンス', [['チームディフェンス',6],['ゾーンディフェンス',6],['2-3ゾーン',6],['3-2ゾーン',6],['1-3-1',6],['マンツーマンディフェンス',5],['ピック&ロールディフェンス',5],['ピックの守り方',5],['スクリーンディフェンス',5],['ヘッジ',3],['ICE',3],['ドロップ',2]]],
+  // フィジカル
+  ['体力向上', [['コンディショニング',5],['スタミナ',4],['持久力',4],['走り込み',4],['フィジカル',3],['アジリティ',3],['ライン走',4],['体力',3],['走力',3]]],
+];
+
+// cat 文字列 + 名前/目的/説明/キーワードを総合してカテゴリーを判定する。
+// 戻り値が空文字なら「カテゴリーなし（未分類）」。
+function _classifyCat(rawCat, ctxParts){
+  const raw = String(rawCat || '').trim();
+  // 1) 明示 cat が正規カテゴリーそのものなら最優先で尊重
+  if (CATS.includes(raw)) return raw;
+
+  // 判定対象テキスト（cat も含める）を連結
+  const text = [raw].concat(ctxParts || []).map(s => String(s || '')).join(' ').toLowerCase();
+  if (!text.trim()) return '';
+
+  // 2) 人数表記を最優先で検出（3→2→1 の順で、大きい数を優先）
+  if (/3\s*(on|対|vs|v)\s*3|3on3|3対3/.test(text)) return '3on3';
+  if (/2\s*(on|対|vs|v)\s*2|2on2|2対2/.test(text)) return '2on2';
+  if (/1\s*(on|対|vs|v)\s*1|1on1|1対1/.test(text)) return '1on1';
+
+  // 3) キーワード辞書でスコアリング
+  const score = {};
+  for (const [cat, rules] of _CAT_RULES){
+    for (const [word, w] of rules){
+      if (text.includes(String(word).toLowerCase())) score[cat] = (score[cat] || 0) + w;
+    }
+  }
+  let best = '', bestScore = 0;
+  for (const cat of CATS){
+    if ((score[cat] || 0) > bestScore){ best = cat; bestScore = score[cat]; }
+  }
+  if (best) return best;
+
+  // 4) 最後に、raw が正規カテゴリーを部分的に含むかだけ確認（旧挙動の保険）
+  const partial = CATS.find(x => raw.includes(x));
+  if (partial) return partial;
+
+  // 5) どれにも当たらなければ未分類（シュートへの誤強制をやめる）
+  return '';
+}
+
+// メニュー用：未分類のときだけ穏当なデフォルトを当てる（空を嫌う画面向け）
+const _normCat = (c, ctx) => _classifyCat(c, ctx) || 'ドリブル';
 
 function normalizeMenu(o){
   const grRaw = o.grades || o.grade || o.対象学年 || ['中学', '高校'];
@@ -2283,7 +2347,12 @@ function normalizeMenu(o){
   return {
     id: o.id || uid('ai'),
     name: String(o.name || o.title || o.練習名 || '名称未設定').trim(),
-    cat: _normCat(o.cat || o.category || o.カテゴリー || o.カテゴリ),
+    cat: _normCat(o.cat || o.category || o.カテゴリー || o.カテゴリ, [
+      o.name, o.title, o.練習名,
+      o.purpose, o.目的,
+      o.desc, o.description, o.練習説明, o.実施方法, o.method,
+      o.kw, o.keywords, o.キーワード, o.tags
+    ]),
     purpose: String(o.purpose || o.目的 || '').trim(),
     grades,
     minP, maxP,
@@ -2301,7 +2370,11 @@ function normalizePrin(o){
   return {
     id: o.id || uid('aipr'),
     title: String(o.title || o.name || o.タイトル || o.原則 || '原則').trim(),
-    cat: _normCat(o.cat || o.category || o.カテゴリー),
+    cat: _classifyCat(o.cat || o.category || o.カテゴリー, [
+      o.title, o.name, o.原則,
+      o.body, o.principle, o.内容, o.desc, o.description,
+      o.kw, o.keywords, o.キーワード
+    ]),
     body: String(o.body || o.principle || o.内容 || o.desc || o.description || '').trim(),
     kw: _kw(o.kw || o.keywords || o.キーワード)
   };
@@ -2312,7 +2385,11 @@ function normalizeDef(o){
   return {
     id: o.id || uid('adf'),
     term: String(o.term || o.用語 || o.見出し || o.title || o.name || '用語').trim().replace(/とは$/, ''),
-    cat: cRaw ? _normCat(cRaw) : '',     // 定義はカテゴリーなしも許容
+    cat: _classifyCat(cRaw, [
+      o.term, o.用語, o.見出し, o.title, o.name,
+      o.body, o.定義, o.意味, o.説明, o.desc, o.description,
+      o.kw, o.keywords, o.キーワード
+    ]),     // 定義はカテゴリーなしも許容
     body: String(o.body || o.定義 || o.意味 || o.説明 || o.desc || o.description || '').trim(),
     kw: _kw(o.kw || o.keywords || o.キーワード)
   };
@@ -2440,6 +2517,44 @@ function resetAll(){
   location.reload();
 }
 
+/* 既存メニューのカテゴリーを、内容（名前・目的・説明・キーワード）から判定し直す。
+   ・新しい分類で「未分類（空）」になった場合は、元のカテゴリーを尊重して変更しない
+   ・現状と同じなら変更しない
+   一度だけ押すボタン用。これ以降は登録時に手動修正する想定。 */
+function reclassifyMenus(){
+  const list = Store.menus || [];
+  if (!list.length){ toast('メニューがありません'); return; }
+
+  // 変更プレビューを作る
+  const changes = [];
+  list.forEach(m => {
+    const ctx = [
+      m.name, m.purpose, m.desc,
+      Array.isArray(m.points) ? m.points.join(' ') : m.points,
+      Array.isArray(m.mistakes) ? m.mistakes.join(' ') : m.mistakes,
+      Array.isArray(m.kw) ? m.kw.join(' ') : m.kw
+    ];
+    // 既存 cat は手がかりとして渡すが、内容判定を優先させたいので cat は文脈側に入れる
+    const next = _classifyCat('', [m.cat].concat(ctx)) || m.cat;
+    if (next && next !== m.cat) changes.push({ id: m.id, name: m.name, from: m.cat || '（なし）', to: next, next });
+  });
+
+  if (!changes.length){ toast('修正が必要なメニューはありませんでした'); return; }
+
+  const preview = changes.slice(0, 12)
+    .map(c => '・' + c.name + '：' + c.from + ' → ' + c.to).join('\n');
+  const more = changes.length > 12 ? ('\n…ほか ' + (changes.length - 12) + ' 件') : '';
+  if (!confirm(changes.length + ' 件のカテゴリーを修正します。\n\n' + preview + more + '\n\nこの内容で実行しますか？')) return;
+
+  const byId = new Map(changes.map(c => [c.id, c.next]));
+  Store.menus = list.map(m => byId.has(m.id) ? Object.assign({}, m, { cat: byId.get(m.id) }) : m);
+  Store.save();
+  Sync.push();
+  toast(changes.length + ' 件のカテゴリーを修正しました');
+  if (typeof renderAdmin === 'function') renderAdmin();
+  else location.reload();
+}
+
 /* ============================================================
    イベント・初期化
    ============================================================ */
@@ -2501,6 +2616,7 @@ function bindEvents(){
       case 'ai-clear':      aiClear(); break;
       case 'google-logout': Sync.logout(); break;
       case 'adm-reset':     resetAll(); break;
+      case 'adm-reclassify': reclassifyMenus(); break;
     }
   });
 
