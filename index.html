@@ -606,7 +606,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.6.0';
+const APP_VER = '1.6.1';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -3061,17 +3061,32 @@ function parseTextToSections(text){
     cur.points.push(p);
   };
   const isHeading = (line) => {
-    const t = line.trim();
+    let t = line.trim();
     if (!t) return null;
-    // 明示記号：# ■ ●（先頭）／【…】／「N.」「N、」見出し番号／行末が「：」「:」で短め
     let m;
-    if ((m = t.match(/^#+\s*(.+)$/))) return m[1].trim();
-    if ((m = t.match(/^[■●▶◆◎○・]\s*(.+：)\s*$/))) return m[1].replace(/[：:]\s*$/, '').trim();
-    if ((m = t.match(/^【(.+?)】\s*$/))) return m[1].trim();
-    if (/[：:]\s*$/.test(t) && t.length <= 26) return t.replace(/[：:]\s*$/, '').trim();
+    // Markdown見出し：# 〜
+    if ((m = t.match(/^#+\s*(.+)$/))) return cleanHead(m[1]);
+    // 箇条書き記号＋太字：- **見出し** / ・**見出し**
+    if ((m = t.match(/^[\-–—・*•▪◦]\s*\*\*(.+?)\*\*\s*[：:]?\s*$/))) return cleanHead(m[1]);
+    // 行全体が太字：**見出し**（末尾コロンも許容）
+    if ((m = t.match(/^\*\*(.+?)\*\*\s*[：:]?\s*$/))) return cleanHead(m[1]);
+    // 太字で始まり、後ろもコロンで終わる見出し：**見出し：**
+    if ((m = t.match(/^\*\*(.+?)[：:]\*\*\s*$/))) return cleanHead(m[1]);
+    // 記号付き見出し：■ ● ◆ など＋テキスト（行末コロンは任意）
+    if ((m = t.match(/^[■●▶◆◎○]\s*(.+?)\s*[：:]?\s*$/))) return cleanHead(m[1]);
+    // 【見出し】
+    if ((m = t.match(/^【(.+?)】\s*$/))) return cleanHead(m[1]);
+    // 行末がコロンで終わる短い行
+    if (/[：:]\s*$/.test(t) && t.replace(/[：:]\s*$/, '').length <= 30) return cleanHead(t);
     return null;
   };
-  const stripBullet = (line) => line.replace(/^[\-–—・*•▪◦\u2022]\s*/, '').replace(/^[0-9０-９]+[\.\．、)）]\s*/, '').trim();
+  // 見出しから装飾記号（** : 末尾）を除去
+  const cleanHead = (s) => String(s || '').replace(/\*\*/g, '').replace(/[：:]\s*$/, '').replace(/^[#■●▶◆◎○【\s]+/, '').replace(/】\s*$/, '').trim();
+  const stripBullet = (line) => line
+    .replace(/^[\-–—・*•▪◦\u2022]\s*/, '')
+    .replace(/^[0-9０-９]+[\.\．、)）]\s*/, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')   // 文中の**強調**は通常テキストに
+    .trim();
 
   lines.forEach(raw => {
     const line = raw.trim();
