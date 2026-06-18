@@ -121,9 +121,9 @@ nav.tabbar{
   border-top:1px solid var(--line);
   padding-bottom:env(safe-area-inset-bottom);
 }
-.tabbar .inner{max-width:var(--maxw);margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);height:var(--tabbar-h)}
-.tabbar button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--faint);font-size:10px;font-weight:700;letter-spacing:.04em;transition:color .15s}
-.tabbar button .ic{font-size:20px;line-height:1;filter:grayscale(1) opacity(.55);transition:filter .15s}
+.tabbar .inner{max-width:var(--maxw);margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr);height:var(--tabbar-h)}
+.tabbar button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--faint);font-size:9.5px;font-weight:700;letter-spacing:0;transition:color .15s;padding:0 1px}
+.tabbar button .ic{font-size:18px;line-height:1;filter:grayscale(1) opacity(.55);transition:filter .15s}
 .tabbar button.on{color:var(--acc)}
 .tabbar button.on .ic{filter:none}
 
@@ -587,7 +587,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.2.0';
+const APP_VER = '1.2.1';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
