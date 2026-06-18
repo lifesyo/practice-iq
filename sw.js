@@ -1,5 +1,5 @@
 /* Drill IQ Service Worker */
-const CACHE = 'drilliq-v8';
+const CACHE = 'drilliq-v9';
 const ASSETS = [
   './',
   './index.html',
@@ -44,7 +44,29 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  /* それ以外はキャッシュファースト */
+  /* HTML（画面遷移・index.html）はネットワーク優先：
+     オンライン時は常に最新を表示し、取れた版をキャッシュ更新。
+     オフライン時のみキャッシュにフォールバック。
+     これにより「デプロイしたのに古い画面が出る」を防ぐ。 */
+  const isHTML = req.mode === 'navigate'
+    || url.pathname === '/' || url.pathname.endsWith('/')
+    || url.pathname.endsWith('/index.html');
+  if (isHTML) {
+    e.respondWith(
+      fetch(req)
+        .then(res => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then(c => c.put('./index.html', copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then(hit => hit || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  /* それ以外（画像・manifest等）はキャッシュファースト */
   e.respondWith(
     caches.match(req).then(hit => {
       if (hit) return hit;
