@@ -1028,6 +1028,60 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
 
 const norm = s => String(s || '').normalize('NFKC').toLowerCase();
 
+/* ひらがな/カタカナ → ローマ字（部分一致を「tag↔タグ」のように橋渡しするため）。
+   完全な変換ではなく検索用の近似。長音・促音・拗音にも対応。 */
+const ROMA_TABLE = {
+  'きゃ':'kya','きゅ':'kyu','きょ':'kyo','しゃ':'sha','しゅ':'shu','しょ':'sho',
+  'ちゃ':'cha','ちゅ':'chu','ちょ':'cho','にゃ':'nya','にゅ':'nyu','にょ':'nyo',
+  'ひゃ':'hya','ひゅ':'hyu','ひょ':'hyo','みゃ':'mya','みゅ':'myu','みょ':'myo',
+  'りゃ':'rya','りゅ':'ryu','りょ':'ryo','ぎゃ':'gya','ぎゅ':'gyu','ぎょ':'gyo',
+  'じゃ':'ja','じゅ':'ju','じょ':'jo','びゃ':'bya','びゅ':'byu','びょ':'byo',
+  'ぴゃ':'pya','ぴゅ':'pyu','ぴょ':'pyo',
+  'ふぁ':'fa','ふぃ':'fi','ふぇ':'fe','ふぉ':'fo','てぃ':'ti','でぃ':'di','とぅ':'tu',
+  'うぃ':'wi','うぇ':'we','うぉ':'wo','ゔぁ':'va','ゔぃ':'vi','ゔぇ':'ve','ゔぉ':'vo',
+  'あ':'a','い':'i','う':'u','え':'e','お':'o',
+  'か':'ka','き':'ki','く':'ku','け':'ke','こ':'ko',
+  'さ':'sa','し':'shi','す':'su','せ':'se','そ':'so',
+  'た':'ta','ち':'chi','つ':'tsu','て':'te','と':'to',
+  'な':'na','に':'ni','ぬ':'nu','ね':'ne','の':'no',
+  'は':'ha','ひ':'hi','ふ':'fu','へ':'he','ほ':'ho',
+  'ま':'ma','み':'mi','む':'mu','め':'me','も':'mo',
+  'や':'ya','ゆ':'yu','よ':'yo','ら':'ra','り':'ri','る':'ru','れ':'re','ろ':'ro',
+  'わ':'wa','を':'o','ん':'n','ゐ':'i','ゑ':'e',
+  'が':'ga','ぎ':'gi','ぐ':'gu','げ':'ge','ご':'go',
+  'ざ':'za','じ':'ji','ず':'zu','ぜ':'ze','ぞ':'zo',
+  'だ':'da','ぢ':'ji','づ':'zu','で':'de','ど':'do',
+  'ば':'ba','び':'bi','ぶ':'bu','べ':'be','ぼ':'bo',
+  'ぱ':'pa','ぴ':'pi','ぷ':'pu','ぺ':'pe','ぽ':'po','ゔ':'vu',
+  'ぁ':'a','ぃ':'i','ぅ':'u','ぇ':'e','ぉ':'o','ゃ':'ya','ゅ':'yu','ょ':'yo','ゎ':'wa'
+};
+function toRomaji(str){
+  if (!str) return '';
+  // カタカナ→ひらがなに寄せる
+  let s = String(str).replace(/[\u30A1-\u30F6]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+  let out = '';
+  for (let i = 0; i < s.length; i++){
+    const two = s.substr(i, 2);
+    if (ROMA_TABLE[two]){ out += ROMA_TABLE[two]; i++; continue; }
+    const ch = s[i];
+    if (ch === 'っ'){                                  // 促音：次の子音を重ねる
+      const nx = s.substr(i + 1, 2);
+      const r = ROMA_TABLE[nx] || ROMA_TABLE[s[i + 1]] || '';
+      if (r) out += r[0];
+      continue;
+    }
+    if (ch === 'ー'){ out += (out.slice(-1) || ''); continue; } // 長音：直前母音を伸ばす近似
+    out += (ROMA_TABLE[ch] != null ? ROMA_TABLE[ch] : ch);
+  }
+  return out;
+}
+/* 検索照合用キー：正規化テキスト＋ローマ字読みを連結（双方向の部分一致を可能にする） */
+function foldKey(str){
+  const n = norm(str);
+  const r = toRomaji(str);
+  return r && r !== n ? (n + ' ' + r) : n;
+}
+
 function uid(p){ return p + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 function ytId(url){
@@ -1552,7 +1606,10 @@ function toggleBM(id){
    ・類義語辞書 / 条件抽出（人数・時間・学年・強度）/ バイグラム照合
    ============================================================ */
 function bigrams(s){
-  const t = norm(s).replace(/[^ぁ-んァ-ヶー一-龠a-z0-9]/g, '');
+  const base = norm(s);
+  const roma = toRomaji(s);
+  const merged = (roma && roma !== base) ? (base + ' ' + roma) : base;
+  const t = merged.replace(/[^ぁ-んァ-ヶー一-龠a-z0-9]/g, '');
   const out = new Set();
   for (let i = 0; i < t.length - 1; i++) out.add(t.slice(i, i + 2));
   return out;
@@ -1595,28 +1652,48 @@ function buildIntent(qRaw){
 const LOWK  = ['低強度', '基礎', '初心者', 'ウォームアップ', 'アップ'];
 const HIGHK = ['高強度', '走り込み', '無酸素', 'シャトルラン'];
 
+/* 用語が複数のテキスト断片のいずれかに（ローマ字読みゆれ込みで）含まれるか。
+   例：「tag」⇔「タグ(tagu)」のように、英字と読みの双方向で部分一致する。 */
+function termIn(t, fields){
+  const tr = toRomaji(t);
+  for (let i = 0; i < fields.length; i++){
+    const f = fields[i];
+    if (!f) continue;
+    if (f.indexOf(t) >= 0) return true;          // そのまま含む
+    if (tr && tr !== t && f.indexOf(tr) >= 0) return true;  // クエリの読みが含まれる
+  }
+  return false;
+}
+function kwIn(kn, fields){
+  for (let i = 0; i < fields.length; i++){
+    const f = fields[i];
+    if (f && (f.indexOf(kn) >= 0 || kn.indexOf(f) >= 0)) return true;
+  }
+  return false;
+}
+
 function scoreMenu(m, it, qBi){
   let s = 0;
-  const kwN   = (m.kw || []).map(norm);
-  const nameN = norm(m.name);
-  const purN  = norm(m.purpose || '');
-  const descN = norm(m.desc || '');
+  const kwN   = (m.kw || []).map(foldKey);
+  const nameN = foldKey(m.name);
+  const purN  = foldKey(m.purpose || '');
+  const descN = foldKey(m.desc || '');
 
   /* 類義語キーワード一致 */
   it.kws.forEach(k => {
     const kn = norm(k);
-    if (kwN.some(x => x.includes(kn) || kn.includes(x)) || nameN.includes(kn) || purN.includes(kn)) s += 12;
+    if (kwIn(kn, kwN) || nameN.includes(kn) || purN.includes(kn)) s += 12;
   });
 
   /* カテゴリ一致 */
   if (catsOf(m).some(c => it.cats.includes(c))) s += 8;
 
-  /* 残り語の一致 */
+  /* 残り語の一致（ローマ字ゆれ込み・部分一致） */
   it.terms.forEach(t => {
-    if (nameN.includes(t)) s += 10;
-    else if (kwN.some(x => x.includes(t))) s += 12;
-    else if (purN.includes(t)) s += 6;
-    else if (descN.includes(t)) s += 2;
+    if (termIn(t, [nameN])) s += 10;
+    else if (termIn(t, kwN)) s += 12;
+    else if (termIn(t, [purN])) s += 6;
+    else if (termIn(t, [descN])) s += 2;
   });
 
   /* バイグラム照合（表記ゆれの吸収・上限15） */
@@ -1647,19 +1724,19 @@ function scoreMenu(m, it, qBi){
 
 function scorePrinciple(p, it, qBi){
   let s = 0;
-  const kwN = (p.kw || []).map(norm);
-  const tN  = norm(p.title);
-  const bN  = norm(p.body || '');
+  const kwN = (p.kw || []).map(foldKey);
+  const tN  = foldKey(p.title);
+  const bN  = foldKey(p.body || '');
 
   it.kws.forEach(k => {
     const kn = norm(k);
-    if (kwN.some(x => x.includes(kn) || kn.includes(x)) || tN.includes(kn)) s += 10;
+    if (kwIn(kn, kwN) || tN.includes(kn)) s += 10;
   });
   if (catsOf(p).some(c => it.cats.includes(c))) s += 6;
   it.terms.forEach(t => {
-    if (tN.includes(t)) s += 8;
-    else if (kwN.some(x => x.includes(t))) s += 8;
-    else if (bN.includes(t)) s += 3;
+    if (termIn(t, [tN])) s += 8;
+    else if (termIn(t, kwN)) s += 8;
+    else if (termIn(t, [bN])) s += 3;
   });
   const docBi = bigrams(p.title + ' ' + (p.kw || []).join(' '));
   let b = 0; qBi.forEach(g => { if (docBi.has(g)) b++; });
@@ -1669,19 +1746,19 @@ function scorePrinciple(p, it, qBi){
 
 function scoreDefinition(d, it, qBi){
   let s = 0;
-  const kwN = (d.kw || []).map(norm);
-  const tN  = norm(d.term);
-  const bN  = norm(d.body || '');
+  const kwN = (d.kw || []).map(foldKey);
+  const tN  = foldKey(d.term);
+  const bN  = foldKey(d.body || '');
 
   it.kws.forEach(k => {
     const kn = norm(k);
-    if (kwN.some(x => x.includes(kn) || kn.includes(x)) || tN.includes(kn)) s += 10;
+    if (kwIn(kn, kwN) || tN.includes(kn)) s += 10;
   });
   if (catsOf(d).some(c => it.cats.includes(c))) s += 5;
   it.terms.forEach(t => {
-    if (tN.includes(t)) s += 10;          // 用語そのものの一致は強く効かせる
-    else if (kwN.some(x => x.includes(t))) s += 8;
-    else if (bN.includes(t)) s += 3;
+    if (termIn(t, [tN])) s += 10;          // 用語そのものの一致は強く効かせる
+    else if (termIn(t, kwN)) s += 8;
+    else if (termIn(t, [bN])) s += 3;
   });
   const docBi = bigrams(d.term + ' ' + (d.kw || []).join(' '));
   let b = 0; qBi.forEach(g => { if (docBi.has(g)) b++; });
@@ -1691,19 +1768,19 @@ function scoreDefinition(d, it, qBi){
 
 function scoreNote(n, it, qBi){
   let s = 0;
-  const kwN = (n.kw || []).map(norm);
-  const tN  = norm(n.title || '');
-  const sN  = norm(n.summary || '');
+  const kwN = (n.kw || []).map(foldKey);
+  const tN  = foldKey(n.title || '');
+  const sN  = foldKey(n.summary || '');
 
   it.kws.forEach(k => {
     const kn = norm(k);
-    if (kwN.some(x => x.includes(kn) || kn.includes(x)) || tN.includes(kn) || sN.includes(kn)) s += 9;
+    if (kwIn(kn, kwN) || tN.includes(kn) || sN.includes(kn)) s += 9;
   });
   if (catsOf(n).some(c => it.cats.includes(c))) s += 5;
   it.terms.forEach(t => {
-    if (tN.includes(t)) s += 9;
-    else if (kwN.some(x => x.includes(t))) s += 7;
-    else if (sN.includes(t)) s += 4;
+    if (termIn(t, [tN])) s += 9;
+    else if (termIn(t, kwN)) s += 7;
+    else if (termIn(t, [sN])) s += 4;
   });
   const docBi = bigrams((n.title || '') + ' ' + (n.summary || '') + ' ' + (n.kw || []).join(' '));
   let b = 0; qBi.forEach(g => { if (docBi.has(g)) b++; });
@@ -3247,7 +3324,8 @@ function noteCard(n){
     + '<div class="nc-detail">'
     +   (n.source ? '<div class="nc-src">出典：' + esc(n.source) + '</div>' : '')
     +   noteSectionsHTML(n)
-    +   '<div style="display:flex;gap:6px;margin-top:10px">'
+    +   '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
+    +     '<button class="btn btn-acc btn-sm" data-act="plan-add" data-kind="note" data-id="' + esc(n.id) + '">＋計画に追加</button>'
     +     '<button class="btn btn-ghost btn-sm" data-act="note-edit" data-id="' + esc(n.id) + '">編集</button>'
     +     '<button class="btn btn-ghost btn-sm btn-danger" data-act="note-del" data-id="' + esc(n.id) + '">削除</button>'
     +   '</div>'
@@ -3377,19 +3455,21 @@ function initChat(){
 /* 質問に関連する保存知識を集める（簡易RAG：キーワード重なりでスコア） */
 function gatherContext(query){
   const qn = norm(query);
+  const qr = toRomaji(query);
   // 区切りトークン（2文字以上）＋ 日本語向けに2-gramも併用して部分一致を拾う
   const tokens = qn.split(/[\s　,、。：:！!？?・]+/).filter(t => t.length >= 2);
+  // ローマ字側のトークンも加える（「tag」⇔「タグ」を橋渡し）
+  const rtokens = qr.split(/[\s　,、。：:！!？?・]+/).filter(t => t.length >= 2);
   const grams = [];
   const compact = qn.replace(/[\s　,、。：:！!？?・]+/g, '');
   for (let i = 0; i + 2 <= compact.length; i++) grams.push(compact.slice(i, i + 2));
-  const probes = Array.from(new Set(tokens.concat(grams)));
 
   const scoreText = (txt) => {
-    const t = norm(txt || '');
+    const t = foldKey(txt || '');     // 正規化＋ローマ字読みを含むキー
     if (!t) return 0;
     let s = 0;
-    // トークン一致は重め、2-gram一致は軽め
     tokens.forEach(tok => { if (t.includes(tok)) s += 3; });
+    rtokens.forEach(tok => { if (tok && t.includes(tok)) s += 3; });
     grams.forEach(g => { if (t.includes(g)) s += 1; });
     return s;
   };
