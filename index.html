@@ -230,6 +230,13 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .yt .yt-t{font-size:13px;font-weight:700;color:var(--text)}
 .yt .yt-s{font-size:11px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .yt-none{font-size:12.5px;color:var(--faint);padding:4px 2px}
+.board{display:flex;flex-direction:column;gap:8px}
+.board-load{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;background:linear-gradient(135deg,#0d3b34,#0a2c28);border:1px solid #16574e;border-radius:12px;padding:18px 14px;color:#7CE0CF;font-size:14px;font-weight:800;cursor:pointer}
+.board-load:active{transform:scale(.99)}
+.board-load .board-ic{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#16574e;color:#fff;font-size:13px}
+.board-open{font-size:11.5px;color:var(--sub);text-decoration:none;align-self:flex-end}
+.board-frame{position:relative;width:100%;aspect-ratio:3/4;max-height:560px;background:#0a0e14;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+@media(min-width:700px){.board-frame{aspect-ratio:4/3}}
 .r-foot{display:flex;gap:8px;padding:0 16px 14px}
 .star{font-size:18px;line-height:1;filter:grayscale(1) opacity(.4);transition:filter .15s,transform .1s}
 .star.on{filter:none}
@@ -1473,6 +1480,52 @@ function liList(arr){
   return '<ul>' + (arr || []).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
 }
 
+/* 作戦板リンク（Draw IQの ?embed= 共有URL）を検証して埋め込みUIを返す。
+   安全のため Draw IQ の共有URL形式（embedパラメータ付き）のみ許可する。 */
+function boardEmbedInfo(url){
+  url = String(url || '').trim();
+  if (!url) return null;
+  let u;
+  try { u = new URL(url); } catch (e) { return null; }
+  if (!/^https?:$/.test(u.protocol)) return null;
+  const id = u.searchParams.get('embed');
+  if (!id) return null;                       // embed共有URLでなければ表示しない
+  // 埋め込みは draw-iq 系ドメインのみ許可（それ以外はリンクとしてのみ開ける）
+  if (!/(^|\.)draw-iq[\w-]*\.vercel\.app$/i.test(u.hostname)){
+    return { url: url, id: id, embeddable: false };
+  }
+  return { url: url, id: id, embeddable: true };
+}
+
+let _boardSeq = 0;
+function boardHTML(m){
+  const info = boardEmbedInfo(m && m.board);
+  if (!info) return '';
+  const secId = 'board-' + (++_boardSeq);
+  const label = '<div class="sec"><div class="s-lbl">作戦板（Draw IQ）</div>';
+  if (!info.embeddable){
+    return label + '<a class="yt" href="' + esc(info.url) + '" target="_blank" rel="noopener">'
+      + '<div class="yt-ph">▶</div><div><div class="yt-t">作戦板を開く ▶</div>'
+      + '<div class="yt-s">' + esc(info.url) + '</div></div></a></div>';
+  }
+  // タップで読み込む方式（一覧で複数iframeを一度に読み込まない）
+  return label
+    + '<div class="board" id="' + secId + '">'
+    +   '<button class="board-load" data-act="board-load" data-sec="' + secId + '" data-url="' + esc(info.url) + '">'
+    +     '<span class="board-ic">▶</span><span>作戦板を再生（タップで読み込み）</span>'
+    +   '</button>'
+    +   '<a class="board-open" href="' + esc(info.url) + '" target="_blank" rel="noopener">別画面で開く ↗</a>'
+    + '</div></div>';
+}
+function boardLoad(secId, url){
+  const box = document.getElementById(secId);
+  if (!box) return;
+  box.innerHTML = '<div class="board-frame"><iframe src="' + esc(url) + '" loading="lazy" '
+    + 'allow="autoplay" referrerpolicy="no-referrer" '
+    + 'style="width:100%;height:100%;border:0;display:block"></iframe></div>'
+    + '<a class="board-open" href="' + esc(url) + '" target="_blank" rel="noopener">別画面で開く ↗</a>';
+}
+
 /* AI回答フォーマット（練習名→目的→必要人数→所要時間→実施方法→指導ポイント→注意点→参考動画） */
 function resultCard(m, num, opts){
   opts = opts || {};
@@ -1502,6 +1555,7 @@ function resultCard(m, num, opts){
   if ((m.mistakes || []).length)
     h += '<div class="sec warn"><div class="s-lbl">注意点（よくあるミス）</div>' + liList(m.mistakes) + '</div>';
   h += '<div class="sec"><div class="s-lbl">参考動画</div>' + ytHTML(m) + '</div>';
+  h += boardHTML(m);
   h += '</div>';
 
   if (!opts.noFoot){
@@ -1576,6 +1630,7 @@ function openNoteModal(id){
     + (n.source ? '<div class="nc-src">出典：' + esc(n.source) + '</div>' : '')
     + (n.cats && n.cats.length ? '<div class="nc-chips" style="margin-bottom:8px">' + catChips(n) + '</div>' : '')
     + noteSectionsHTML(n)
+    + boardHTML(n)
     + '<button class="btn ' + (inPlan ? 'btn-ghost' : 'btn-acc') + ' btn-block" data-act="plan-add" data-kind="note" data-id="' + esc(n.id) + '" style="margin-top:12px">'
     + (inPlan ? '✓ 計画に追加済み（もう一度押すと追加）' : '＋ 本日の練習計画に追加') + '</button>'
     + '</div>';
@@ -2388,6 +2443,7 @@ function openMenuForm(id){
     + fld('よくあるミス（1行に1つ）', '<textarea id="f-mistakes" class="field" rows="3">' + esc((m.mistakes || []).join('\n')) + '</textarea>')
     + fld('検索キーワード（スペース区切り）', '<input id="f-kw" class="field" value="' + esc((m.kw || []).join(' ')) + '" placeholder="例：判断 速攻 アウトナンバー">')
     + fld('参考動画URL（任意・1行に1つ／複数可）', '<textarea id="f-vids" class="field" rows="3" placeholder="https://youtu.be/xxxx&#10;https://www.youtube.com/watch?v=yyyy" style="font-size:12.5px">' + esc(getVids(m).join('\n')) + '</textarea>')
+    + fld('作戦板リンク（Draw IQの共有URL・任意）', '<input id="f-board" class="field" type="url" value="' + esc(m.board || '') + '" placeholder="https://draw-iq-iota.vercel.app/?embed=...">')
     + '<button class="btn btn-acc btn-block" data-act="save-menu">保存する</button>';
 
   openModal(id ? '練習メニューを編集' : '練習メニューを追加', h);
@@ -2421,7 +2477,8 @@ function saveMenu(){
     mistakes: lines($('#f-mistakes').value),
     desc,
     kw: $('#f-kw').value.split(/[、,\s　]+/).map(s => s.trim()).filter(Boolean),
-    vids: ($('#f-vids').value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean)
+    vids: ($('#f-vids').value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean),
+    board: ($('#f-board').value || '').trim()
   };
   if (m.maxP < m.minP) m.maxP = m.minP;
 
@@ -2802,7 +2859,8 @@ function normalizeMenu(o){
     mistakes: _splitText(o.mistakes || o.よくあるミス || o.commonMistakes),
     desc: String(o.desc || o.description || o.練習説明 || o.実施方法 || o.method || '').trim(),
     kw: _kw(o.kw || o.keywords || o.キーワード || o.tags),
-    vids: _arr(o.vids || o.videos || o.動画 || o.参考動画 || o.urls || o.youtube || o.YouTube || o.url || o.yt)
+    vids: _arr(o.vids || o.videos || o.動画 || o.参考動画 || o.urls || o.youtube || o.YouTube || o.url || o.yt),
+    board: String(o.board || o.作戦板 || o.diagram || '').trim()
   };
 }
 
@@ -3088,6 +3146,7 @@ function normalizeNote(o){
     cats: cats,
     cat: cats[0] || '',
     kw: kw,
+    board: String(o.board || '').trim(),
     createdAt: o.createdAt || new Date().toISOString()
   };
 }
@@ -3104,18 +3163,83 @@ function readFileAsBase64(file){
   });
 }
 
+/* 画像を縮小＆JPEG再圧縮して、大きなスクショでもAIに送れるサイズにする。
+   返り値: { media_type:'image/jpeg', data: base64 }
+   maxDim: 長辺の最大ピクセル / 目標バイト数を超える間は品質を下げて再出力 */
+function compressImage(file, maxDim, targetBytes){
+  maxDim = maxDim || 1600;
+  targetBytes = targetBytes || 900 * 1024;   // 約900KB（Base64化しても余裕を持って上限内）
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        let { width: w, height: h } = img;
+        if (Math.max(w, h) > maxDim){
+          const scale = maxDim / Math.max(w, h);
+          w = Math.round(w * scale); h = Math.round(h * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';                 // 透過PNG対策で白背景
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+
+        let q = 0.82;
+        let dataUrl = canvas.toDataURL('image/jpeg', q);
+        // 目標サイズを超えていたら品質を段階的に下げる
+        let guard = 0;
+        while (dataUrl.length * 0.75 > targetBytes && q > 0.4 && guard < 6){
+          q -= 0.12;
+          dataUrl = canvas.toDataURL('image/jpeg', q);
+          guard++;
+        }
+        URL.revokeObjectURL(url);
+        const i = dataUrl.indexOf(',');
+        resolve({ media_type: 'image/jpeg', data: i >= 0 ? dataUrl.slice(i + 1) : dataUrl });
+      } catch (e){ URL.revokeObjectURL(url); reject(e); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('画像の読み込みに失敗')); };
+    img.src = url;
+  });
+}
+
 async function onNoteFiles(input){
   const files = Array.from(input.files || []);
   _noteFiles = [];
+  const lbl = $('#note-files');
+  if (lbl) lbl.textContent = files.length ? '画像を準備しています…' : '';
+
   for (const f of files){
-    if (f.size > 6 * 1024 * 1024){ toast('「' + f.name + '」が大きすぎます（6MBまで）'); continue; }
+    const isPdf = /pdf/i.test(f.type) || /\.pdf$/i.test(f.name);
     try {
-      const data = await readFileAsBase64(f);
-      const isPdf = /pdf/i.test(f.type) || /\.pdf$/i.test(f.name);
-      _noteFiles.push({ name: f.name, media_type: f.type || (isPdf ? 'application/pdf' : 'image/jpeg'), data, kind: isPdf ? 'document' : 'image' });
+      if (isPdf){
+        // PDFは圧縮できないのでサイズ上限を確認（約9MBまで）
+        if (f.size > 9 * 1024 * 1024){ toast('「' + f.name + '」が大きすぎます（PDFは約9MBまで）'); continue; }
+        const data = await readFileAsBase64(f);
+        _noteFiles.push({ name: f.name, media_type: f.type || 'application/pdf', data, kind: 'document' });
+      } else if (/^image\//i.test(f.type) || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(f.name)){
+        // 画像は縮小＆圧縮（大きいスクショ対策）。HEIC等でも canvas が読めれば通る
+        let out;
+        try {
+          out = await compressImage(f, 1600, 900 * 1024);
+        } catch (e) {
+          // 圧縮に失敗した場合は、小さければそのまま送る
+          if (f.size <= 4 * 1024 * 1024){
+            const data = await readFileAsBase64(f);
+            out = { media_type: f.type || 'image/jpeg', data };
+          } else {
+            toast('「' + f.name + '」を読み込めませんでした（別の形式でお試しください）');
+            continue;
+          }
+        }
+        _noteFiles.push({ name: f.name, media_type: out.media_type, data: out.data, kind: 'image' });
+      } else {
+        toast('「' + f.name + '」は対応していない形式です');
+      }
     } catch (e) { toast('「' + f.name + '」の読み込みに失敗'); }
   }
-  const lbl = $('#note-files');
   if (lbl) lbl.textContent = _noteFiles.length ? (_noteFiles.length + ' 件の添付：' + _noteFiles.map(f => f.name).join('、')) : '';
 }
 
@@ -3324,6 +3448,7 @@ function noteCard(n){
     + '<div class="nc-detail">'
     +   (n.source ? '<div class="nc-src">出典：' + esc(n.source) + '</div>' : '')
     +   noteSectionsHTML(n)
+    +   boardHTML(n)
     +   '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
     +     '<button class="btn btn-acc btn-sm" data-act="plan-add" data-kind="note" data-id="' + esc(n.id) + '">＋計画に追加</button>'
     +     '<button class="btn btn-ghost btn-sm" data-act="note-edit" data-id="' + esc(n.id) + '">編集</button>'
@@ -3373,6 +3498,7 @@ function editNote(id){
     + fld('カテゴリー（複数選択可）', catOpts)
     + fld('内容（「# 見出し」で項目、「- 」で箇条書き）',
         '<textarea id="f-nbody" class="field" rows="12" style="font-size:14px;line-height:1.7">' + esc(noteToEditText(n)) + '</textarea>')
+    + fld('作戦板リンク（Draw IQの共有URL・任意）', '<input id="f-nboard" class="field" type="url" value="' + esc(n.board || '') + '" placeholder="https://draw-iq-iota.vercel.app/?embed=...">')
     + '<div style="display:flex;gap:8px;margin-top:6px">'
     +   '<button class="btn btn-acc" data-act="note-edit-save">保存</button>'
     +   '<button class="btn btn-ghost" data-act="modal-close">キャンセル</button>'
@@ -3391,7 +3517,7 @@ function saveNoteEdit(){
     id: n.id, title: title, source: n.source, raw: n.raw,
     sections: sections.length ? sections : n.sections,
     cats: cats.length ? cats : catsOf(n),
-    kw: n.kw, createdAt: n.createdAt
+    kw: n.kw, board: ($('#f-nboard').value || '').trim(), createdAt: n.createdAt
   });
   Store.notes = Store.upsert(Store.notes, [updated]);
   Store.save();
@@ -3620,6 +3746,7 @@ function bindEvents(){
       case 'open-prin':     openPrinModal(el.dataset.id); break;
       case 'open-def':      openDefModal(el.dataset.id); break;
       case 'open-note':     openNoteModal(el.dataset.id); break;
+      case 'board-load':    boardLoad(el.dataset.sec, el.dataset.url); break;
       case 'modal-close':   closeModal(); break;
       case 'book-cat':      BOOK.cat = el.dataset.v; renderBook(); break;
       case 'cat-add-new':   addNewCatToSelect(el); break;
