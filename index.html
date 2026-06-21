@@ -246,6 +246,45 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .defcard .df-term::before{content:"“";color:#A78BFA;font-weight:900;font-size:18px;line-height:0}
 .defcard .df-term .df-q{font-size:11.5px;font-weight:700;color:#9C8CC9}
 .defcard .df-body{font-size:13.5px;line-height:1.8;color:#CFC7E6}
+
+/* ノート小型カード（検索・相談・計画で使用） */
+.notemini{display:flex;gap:10px;align-items:flex-start;background:linear-gradient(135deg,#0F1B1A,#0C1716);border:1px solid #1E3330;border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;cursor:pointer;transition:transform .06s}
+.notemini:active{transform:scale(.99)}
+.notemini .nm-main{flex:1;min-width:0}
+.notemini .nm-title{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:800;color:#D6F0EA}
+.notemini .nm-ic{flex:none}
+.notemini .nm-sub{font-size:12px;color:#8FB3AC;margin-top:3px;line-height:1.55}
+.notemini .nm-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.notemini .nm-side{flex:none;display:flex;align-items:center}
+
+/* 本日の練習計画 */
+.plrow{display:flex;gap:10px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:11px 12px;margin-bottom:9px}
+.plrow .pl-num{flex:none;width:24px;text-align:center;font-size:18px;font-weight:900;color:var(--acc);line-height:1.5;font-variant-numeric:tabular-nums}
+.plrow .pl-main{flex:1;min-width:0;cursor:pointer}
+.plrow .pl-name{font-size:14px;font-weight:800;line-height:1.4;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.plrow .pl-meta{font-size:11px;color:var(--faint);margin-top:3px}
+.plrow .pl-kind{font-size:10px;font-weight:800;padding:1px 7px;border-radius:999px;letter-spacing:.04em}
+.pl-kind.pk-menu{color:#FDBA74;background:#FDBA7422;border:1px solid #FDBA744d}
+.pl-kind.pk-note{color:#6EE7D6;background:#6EE7D622;border:1px solid #6EE7D64d}
+.pl-kind.pk-principle{color:#7FB3FF;background:#7FB3FF22;border:1px solid #7FB3FF4d}
+.pl-kind.pk-definition{color:#C4B5FD;background:#C4B5FD22;border:1px solid #C4B5FD4d}
+.plrow .pl-side{flex:none;display:flex;align-items:center;gap:6px}
+.plrow .pl-min{width:54px;background:var(--bg2);border:1px solid var(--line2);border-radius:8px;color:var(--text);font-size:12px;padding:6px 6px;text-align:center}
+.plrow .pl-min::-webkit-inner-spin-button{opacity:.4}
+.plrow .pl-moves{display:flex;flex-direction:column;gap:2px}
+.plrow .pl-mv{width:26px;height:20px;border-radius:6px;background:var(--bg2);border:1px solid var(--line2);color:var(--sub);font-size:10px;line-height:1;display:flex;align-items:center;justify-content:center}
+.plrow .pl-mv:disabled{opacity:.3}
+.plrow .pl-del{width:30px;height:30px;border-radius:8px;background:var(--bg2);border:1px solid var(--line2);color:#F87171;font-size:13px;font-weight:800}
+.plan-foot{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
+.plan-total{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+.plan-total .pt-l{font-size:12px;color:var(--sub);font-weight:700}
+.plan-total .pt-v{font-size:22px;font-weight:900;color:var(--acc);font-variant-numeric:tabular-nums}
+.plan-acts{display:flex;gap:8px}
+.plan-acts .btn{flex:1}
+
+/* タブのバッジ */
+.tabbadge{position:absolute;top:5px;left:calc(50% + 8px);min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--acc);color:#0A0E14;font-size:10px;font-weight:900;line-height:16px;text-align:center;box-shadow:0 0 0 2px var(--bg)}
+.tabbar button{position:relative}
 .empty{
   text-align:center;padding:38px 20px;color:var(--sub);
   border:1.5px dashed var(--line2);border-radius:var(--radius);margin-bottom:14px;
@@ -319,7 +358,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .notecard .nc-summary{margin-top:9px;font-size:14px;line-height:1.75;white-space:pre-wrap}
 .notecard .nc-points,.note-prev .nc-points{margin:5px 0 0;padding-left:20px}
 .notecard .nc-points li,.note-prev .nc-points li{font-size:14px;line-height:1.7;margin:2px 0}
-.notecard .nc-lbl,.note-prev .nc-lbl{font-size:13.5px;font-weight:800;color:var(--acc) !important;letter-spacing:.03em;margin:10px 0 4px}
+.notecard .nc-lbl{font-size:11px;font-weight:800;color:var(--acc);letter-spacing:.05em;margin-bottom:3px}
 .notecard ul{margin:0;padding-left:18px}
 .notecard li{font-size:13.5px;line-height:1.7;margin:1px 0}
 .note-prev{background:var(--panel2);border:1px solid var(--acc-line);border-radius:12px;padding:13px}
@@ -452,32 +491,9 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 
   <!-- ================= プラン生成 ================= -->
   <section class="view" data-view="plan">
-    <div class="h-eyebrow">PRACTICE PLAN</div>
-    <div class="h-title">練習プランを自動生成</div>
-    <div class="h-desc">条件を入力すると、登録メニューを組み合わせて1日の練習プランを作成します。</div>
-
-    <div class="card">
-      <div class="row2">
-        <div>
-          <label class="lbl">対象学年</label>
-          <select id="pl-grade" class="field">
-            <option value="中学">中学生</option>
-            <option value="高校">高校生</option>
-          </select>
-        </div>
-        <div>
-          <label class="lbl">人数</label>
-          <input id="pl-people" class="field" type="number" inputmode="numeric" min="1" max="40" value="12">
-        </div>
-      </div>
-      <label class="lbl">練習時間</label>
-      <div class="chips" id="pl-time-chips"></div>
-      <label class="lbl">強化したい項目（最大3つ）</label>
-      <div class="chips" id="pl-focus-chips"></div>
-      <div style="margin-top:18px">
-        <button class="btn btn-acc btn-block" data-act="gen-plan">プランを生成する</button>
-      </div>
-    </div>
+    <div class="h-eyebrow">TODAY'S PRACTICE</div>
+    <div class="h-title">本日の練習計画</div>
+    <div class="h-desc">「AI検索」「相談」「教科書」で見つけた練習メニューや指導ノートを ＋計画 で追加し、並べ替え・時間調整・削除して本日のメニューを組み立てます。</div>
 
     <div id="plan-out"></div>
   </section>
@@ -582,7 +598,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
   <div class="inner">
     <button data-tab="search" class="on"><span class="ic">🔍</span>AI検索</button>
     <button data-tab="chat"><span class="ic">💬</span>相談</button>
-    <button data-tab="plan"><span class="ic">📋</span>プラン</button>
+    <button data-tab="plan"><span class="ic">📋</span>計画<span id="plan-badge" class="tabbadge" style="display:none"></span></button>
     <button data-tab="book"><span class="ic">📖</span>教科書</button>
     <button data-tab="notes"><span class="ic">🗒️</span>ノート</button>
     <button data-tab="admin"><span class="ic">⚙️</span>管理</button>
@@ -606,7 +622,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.6.3';
+const APP_VER = '1.6.1';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -1051,6 +1067,7 @@ const LS = {
   prin   : 'drilliq_principles',
   defs   : 'drilliq_definitions',
   notes  : 'drilliq_notes',
+  plan   : 'drilliq_plan_today',
   seedv  : 'drilliq_seedv',
   remotev: 'drilliq_remotev',
   bm     : 'drilliq_bookmarks',
@@ -1323,6 +1340,7 @@ function switchTab(name){
   if (name === 'admin') renderAdmin();
   if (name === 'notes') renderNotes();
   if (name === 'chat')  initChat();
+  if (name === 'plan')  renderPlan();
 }
 
 /* ============================================================
@@ -1433,9 +1451,13 @@ function resultCard(m, num, opts){
   h += '</div>';
 
   if (!opts.noFoot){
+    const inPlan = PLAN_ITEMS.some(x => x.kind === 'menu' && x.id === m.id);
     h += '<div class="r-foot">'
        +   '<button class="btn btn-ghost btn-sm" data-act="bm" data-id="' + esc(m.id) + '">'
        +     '<span class="star' + (bmOn ? ' on' : '') + '">★</span>&nbsp;' + (bmOn ? 'ブックマーク済み' : 'ブックマーク')
+       +   '</button>'
+       +   '<button class="btn ' + (inPlan ? 'btn-ghost' : 'btn-acc') + ' btn-sm" data-act="plan-add" data-kind="menu" data-id="' + esc(m.id) + '">'
+       +     (inPlan ? '✓ 計画に追加済み' : '＋ 計画に追加')
        +   '</button>'
        + '</div>';
   }
@@ -1491,6 +1513,19 @@ function openDefModal(id){
   openModal('定義', '<div class="defcard" style="margin:0"><div class="df-term">' + esc(d.term) + '<span class="df-q">とは</span></div>'
     + '<div class="df-body">' + esc(d.body) + '</div>'
     + (catsOf(d).length ? '<div style="margin-top:10px">' + catChips(d) + '</div>' : '') + '</div>');
+}
+function openNoteModal(id){
+  const n = Store.note(id);
+  if (!n) return;
+  const inPlan = PLAN_ITEMS.some(x => x.kind === 'note' && x.id === id);
+  const body = '<div class="notecard open" style="margin:0">'
+    + (n.source ? '<div class="nc-src">出典：' + esc(n.source) + '</div>' : '')
+    + (n.cats && n.cats.length ? '<div class="nc-chips" style="margin-bottom:8px">' + catChips(n) + '</div>' : '')
+    + noteSectionsHTML(n)
+    + '<button class="btn ' + (inPlan ? 'btn-ghost' : 'btn-acc') + ' btn-block" data-act="plan-add" data-kind="note" data-id="' + esc(n.id) + '" style="margin-top:12px">'
+    + (inPlan ? '✓ 計画に追加済み（もう一度押すと追加）' : '＋ 本日の練習計画に追加') + '</button>'
+    + '</div>';
+  openModal(esc(n.title), body);
 }
 
 /* ============================================================
@@ -1654,6 +1689,45 @@ function scoreDefinition(d, it, qBi){
   return s;
 }
 
+function scoreNote(n, it, qBi){
+  let s = 0;
+  const kwN = (n.kw || []).map(norm);
+  const tN  = norm(n.title || '');
+  const sN  = norm(n.summary || '');
+
+  it.kws.forEach(k => {
+    const kn = norm(k);
+    if (kwN.some(x => x.includes(kn) || kn.includes(x)) || tN.includes(kn) || sN.includes(kn)) s += 9;
+  });
+  if (catsOf(n).some(c => it.cats.includes(c))) s += 5;
+  it.terms.forEach(t => {
+    if (tN.includes(t)) s += 9;
+    else if (kwN.some(x => x.includes(t))) s += 7;
+    else if (sN.includes(t)) s += 4;
+  });
+  const docBi = bigrams((n.title || '') + ' ' + (n.summary || '') + ' ' + (n.kw || []).join(' '));
+  let b = 0; qBi.forEach(g => { if (docBi.has(g)) b++; });
+  s += Math.min(b, 10);
+  return s;
+}
+
+/* 検索・相談・計画で使うノートの小型カード（タップで詳細モーダル＋計画追加） */
+function noteCardMini(n, opts){
+  opts = opts || {};
+  const secCount = (Array.isArray(n.sections) ? n.sections.length : 0) || (n.summary ? 1 : 0);
+  const preview = (n.summary || '').replace(/\n/g, ' / ').slice(0, 90);
+  const plus = opts.noPlan ? '' :
+    '<button class="btn btn-ghost btn-sm" data-act="plan-add" data-kind="note" data-id="' + esc(n.id) + '" onclick="event.stopPropagation()">＋計画</button>';
+  return '<div class="notemini" data-act="open-note" data-id="' + esc(n.id) + '">'
+    + '<div class="nm-main">'
+    +   '<div class="nm-title"><span class="nm-ic">🗒️</span>' + esc(n.title) + '</div>'
+    +   (preview ? '<div class="nm-sub">' + esc(preview) + '</div>' : '')
+    +   (n.cats && n.cats.length ? '<div class="nm-meta">' + catChips(n) + (secCount > 1 ? '<span class="tbadge">' + secCount + '項目</span>' : '') + '</div>' : '')
+    + '</div>'
+    + (plus ? '<div class="nm-side">' + plus + '</div>' : '')
+    + '</div>';
+}
+
 /* ============================================================
    検索の実行と表示
    ============================================================ */
@@ -1713,11 +1787,17 @@ function renderSearch(q){
     .sort((a, b) => b.s - a.s)
     .slice(0, 2);
 
+  const notes = (Store.notes || [])
+    .map(n => ({ n, s: scoreNote(n, it, qBi) }))
+    .filter(x => x.s >= 9)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, 3);
+
   let h = intentBox(it, list.length, fallback);
 
   if (!list.length){
-    /* 練習が無くても、定義・原則が当たっていれば「見つからない」とは出さない */
-    if (!defs.length && !prins.length){
+    /* 練習が無くても、ノート・定義・原則が当たっていれば「見つからない」とは出さない */
+    if (!defs.length && !prins.length && !notes.length){
       h += '<div class="empty">'
          +   '<div class="e-ic">🏀</div>'
          +   '<div class="e-t">見つかりませんでした</div>'
@@ -1726,6 +1806,14 @@ function renderSearch(q){
     }
   } else {
     h += list.map((x, i) => resultCard(x.m, i + 1)).join('');
+  }
+
+  if (notes.length){
+    h += '<div class="relsec">'
+       +   '<div class="h-eyebrow">COACHING NOTES</div>'
+       +   '<div class="h-title" style="font-size:16px">関連する指導ノート</div>'
+       +   notes.map(x => noteCardMini(x.n)).join('')
+       + '</div>';
   }
 
   if (defs.length){
@@ -1762,195 +1850,172 @@ const EXAMPLES = [
 /* ============================================================
    練習プラン生成
    ============================================================ */
-const PLAN_TIMES = [60, 90, 120, 150, 180];
-const CIRC = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
-let PLAN = null;
+const CIRC = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮'];
 
-const round5 = n => Math.max(5, Math.round(n / 5) * 5);
-const kwHas  = (m, words) => (m.kw || []).some(k => words.some(w => norm(k).includes(norm(w))));
+/* ============================================================
+   本日の練習計画（手動・端末内に保存）
+   AI検索・相談・教科書から「＋計画」で追加し、並べ替え／削除して使う。
+   PLAN_ITEMS: [{ kind:'menu'|'note'|'principle'|'definition', id, min? }]
+   ============================================================ */
+let PLAN_ITEMS = [];
 
-function rankCands(pool, pred, grade, target){
-  return pool.filter(pred)
-    .map(m => {
-      let s = 0;
-      if ((m.grades || []).includes(grade)) s += 4;
-      s -= Math.abs((+m.time || 0) - target) / 5;
-      s += Math.random() * 0.6;
-      return { m, s };
-    })
-    .sort((a, b) => b.s - a.s)
-    .map(x => x.m.id);
+function loadPlan(){
+  try { PLAN_ITEMS = JSON.parse(localStorage.getItem(LS.plan) || '[]'); }
+  catch (e) { PLAN_ITEMS = []; }
+  if (!Array.isArray(PLAN_ITEMS)) PLAN_ITEMS = [];
+}
+function savePlan(){
+  try { localStorage.setItem(LS.plan, JSON.stringify(PLAN_ITEMS)); } catch (e) {}
 }
 
-function firstNonEmpty(){
-  for (let i = 0; i < arguments.length; i++)
-    if (arguments[i] && arguments[i].length) return arguments[i];
-  return [];
+/* 参照先の実体を取得（削除済みなら null） */
+function planResolve(it){
+  if (it.kind === 'menu')       return Store.menu(it.id);
+  if (it.kind === 'note')       return Store.note(it.id);
+  if (it.kind === 'principle')  return Store.principle(it.id);
+  if (it.kind === 'definition') return Store.definition(it.id);
+  return null;
+}
+function planTitle(it, obj){
+  if (!obj) return '（削除された項目）';
+  if (it.kind === 'menu')       return obj.name;
+  if (it.kind === 'note')       return obj.title;
+  if (it.kind === 'principle')  return obj.title;
+  if (it.kind === 'definition') return obj.term + ' とは';
+  return '';
+}
+const PLAN_KIND_LABEL = { menu: '練習', note: 'ノート', principle: '原則', definition: '定義' };
+
+function planAdd(kind, id){
+  if (!kind || !id) return;
+  if (PLAN_ITEMS.some(x => x.kind === kind && x.id === id)){
+    toast('すでに本日の計画に入っています');
+    return;
+  }
+  PLAN_ITEMS.push({ kind: kind, id: id });
+  savePlan();
+  updatePlanBadge();
+  const obj = planResolve({ kind: kind, id: id });
+  toast('「' + planTitle({ kind: kind, id: id }, obj) + '」を計画に追加しました');
+  const pv = $('.view[data-view="plan"]');
+  if (pv && pv.classList.contains('on')) renderPlan();
+}
+function planRemove(idx){
+  if (idx < 0 || idx >= PLAN_ITEMS.length) return;
+  PLAN_ITEMS.splice(idx, 1);
+  savePlan(); updatePlanBadge(); renderPlan();
+}
+function planMove(idx, dir){
+  const j = idx + dir;
+  if (j < 0 || j >= PLAN_ITEMS.length) return;
+  const tmp = PLAN_ITEMS[idx]; PLAN_ITEMS[idx] = PLAN_ITEMS[j]; PLAN_ITEMS[j] = tmp;
+  savePlan(); renderPlan();
+}
+function planSetMin(idx, val){
+  if (idx < 0 || idx >= PLAN_ITEMS.length) return;
+  const v = parseInt(val, 10);
+  if (v > 0) PLAN_ITEMS[idx].min = v; else delete PLAN_ITEMS[idx].min;
+  savePlan();
+  planUpdateTotal();
+}
+function planClear(){
+  if (!PLAN_ITEMS.length) return;
+  if (!confirm('本日の練習計画をすべて消去しますか？（登録データは消えません）')) return;
+  PLAN_ITEMS = []; savePlan(); updatePlanBadge(); renderPlan();
 }
 
-function generatePlan(grade, people, total, focus){
-  const pool = Store.menus.filter(m => (+m.minP || 1) <= people);
-  const blocks = [];
-  const used = new Set();
-
-  function add(label, mins, cands){
-    const free = cands.filter(id => !used.has(id));
-    const list = (free.length ? free : cands).slice(0, 6);
-    if (list[0]) used.add(list[0]);
-    blocks.push({ label, mins, cands: list, idx: 0 });
-  }
-
-  const hasFund = total >= 75;
-  const hasSS   = total >= 60 && people >= 4;
-
-  let warm = Math.min(15, round5(total * 0.12));
-  let fund = hasFund ? round5(total * 0.13) : 0;
-  let ss   = hasSS   ? round5(total * 0.17) : 0;
-  let game = Math.max(15, round5(total * 0.22));
-  let focusTotal = total - warm - fund - ss - game;
-
-  /* ウォームアップ */
-  add('ウォームアップ', warm, firstNonEmpty(
-    rankCands(pool, m => catsHit(m, ['アップ']) || kwHas(m, ['ウォームアップ', 'アップ', '低強度']), grade, warm),
-    rankCands(pool, m => catsHit(m, ['アップ', '身体操作', 'ドリブル', 'パス']), grade, warm)
-  ));
-
-  /* 基礎ファンダメンタル（75分以上） */
-  if (fund){
-    const fcats = ['ファンダメンタル', 'ドリブル', 'パス', 'シュート'].filter(c => !focus.includes(c));
-    add('基礎ファンダメンタル', fund, firstNonEmpty(
-      rankCands(pool, m => catsHit(m, fcats), grade, fund),
-      rankCands(pool, m => catsHit(m, ['ファンダメンタル', 'ドリブル', 'パス', 'シュート']), grade, fund)
-    ));
-  }
-
-  /* 強化テーマ */
-  const per = Math.max(10, round5(focusTotal / focus.length));
-  focus.forEach((c, i) => {
-    const mins = (i === focus.length - 1)
-      ? Math.max(10, focusTotal - per * (focus.length - 1))
-      : per;
-    add('強化テーマ：' + c, mins, rankCands(pool, m => catsHit(m, [c]), grade, mins));
-  });
-
-  /* 対人スキル（60分以上・4人以上） */
-  if (ss){
-    add('対人スキル', ss, firstNonEmpty(
-      rankCands(pool, m => catsHit(m, ['1on1', '2on1', '2on2', '3on2', '3on3']) && !catsHit(m, focus), grade, ss),
-      rankCands(pool, m => catsHit(m, ['1on1', '2on1', '2on2', '3on2', '3on3']), grade, ss)
-    ));
-  }
-
-  /* ゲーム形式 */
-  add('ゲーム形式', game, firstNonEmpty(
-    rankCands(pool, m => kwHas(m, ['ゲーム形式', 'スクリメージ']), grade, game),
-    rankCands(pool, m => catsHit(m, ['チームオフェンス', 'チームディフェンス', '3on3']) && (+m.time || 0) >= 20, grade, game)
-  ));
-
-  /* 合計を一致させる（最大ブロックで吸収） */
-  let diff = total - blocks.reduce((a, b) => a + b.mins, 0);
-  if (diff !== 0){
-    const sorted = blocks.slice().sort((a, b) => b.mins - a.mins);
-    for (const b of sorted){
-      if (!diff) break;
-      const next = Math.max(5, b.mins + diff);
-      diff -= (next - b.mins);
-      b.mins = next;
-    }
-  }
-
-  return { grade, people, total, focus: focus.slice(), blocks };
+function planTotalMin(){
+  return PLAN_ITEMS.reduce((a, it) => {
+    if (it.min) return a + it.min;
+    const o = planResolve(it);
+    return a + (it.kind === 'menu' && o ? (+o.time || 0) : 0);
+  }, 0);
+}
+function planUpdateTotal(){
+  const el = $('#plan-total-min');
+  if (el) el.textContent = planTotalMin() + '分';
 }
 
-function onGenPlan(){
-  const grade  = $('#pl-grade').value;
-  const people = Math.min(40, Math.max(1, +$('#pl-people').value || 0));
-  const tEl    = $('#pl-time-chips .chip.on');
-  const total  = tEl ? +tEl.dataset.v : 90;
-  const focus  = $$('#pl-focus-chips .chip.on').map(c => c.dataset.v);
-  if (!people){ toast('人数を入力してください'); return; }
-  if (!focus.length){ toast('強化したい項目を1つ以上選んでください'); return; }
+function updatePlanBadge(){
+  const b = $('#plan-badge');
+  if (!b) return;
+  const n = PLAN_ITEMS.length;
+  b.textContent = n ? String(n) : '';
+  b.style.display = n ? '' : 'none';
+}
 
-  $('#plan-out').innerHTML =
-    '<div class="ai-status"><span class="dot"></span>登録メニューを組み合わせています…</div>';
-  setTimeout(() => {
-    PLAN = generatePlan(grade, people, total, focus);
-    renderPlan();
-    const out = $('#plan-out');
-    if (out.scrollIntoView) out.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 300);
+function planRowHTML(it, i){
+  const o = planResolve(it);
+  const title = planTitle(it, o);
+  const gone = !o;
+  const kindCls = 'pk-' + it.kind;
+  let meta = '';
+  if (o && it.kind === 'menu')       meta = catsOf(o).join('・') + ' ・ 標準' + (+o.time || 0) + '分';
+  else if (o && it.kind === 'note')  meta = (o.cats || []).join('・') || '指導ノート';
+  else if (o && it.kind === 'principle') meta = catsOf(o).join('・');
+  else if (o && it.kind === 'definition') meta = catsOf(o).join('・');
+
+  const openAct = gone ? '' :
+    (it.kind === 'menu' ? 'open-menu' : it.kind === 'note' ? 'open-note' : it.kind === 'principle' ? 'open-prin' : 'open-def');
+
+  const minField = (it.kind === 'menu' || it.kind === 'note')
+    ? '<input class="pl-min" type="number" inputmode="numeric" min="0" placeholder="分" value="' + (it.min != null ? it.min : '') + '" data-act="plan-min" data-i="' + i + '" onclick="event.stopPropagation()">'
+    : '';
+
+  return '<div class="plrow">'
+    + '<div class="pl-num">' + (CIRC[i] || (i + 1)) + '</div>'
+    + '<div class="pl-main"' + (openAct ? ' data-act="' + openAct + '" data-id="' + esc(it.id) + '"' : '') + '>'
+    +   '<div class="pl-name">' + (gone ? '<span style="color:var(--bad)">' : '') + esc(title) + (gone ? '</span>' : '')
+    +     ' <span class="pl-kind ' + kindCls + '">' + (PLAN_KIND_LABEL[it.kind] || '') + '</span></div>'
+    +   (meta ? '<div class="pl-meta">' + esc(meta) + '</div>' : '')
+    + '</div>'
+    + '<div class="pl-side">'
+    +   minField
+    +   '<div class="pl-moves">'
+    +     '<button class="pl-mv" data-act="plan-up" data-i="' + i + '"' + (i === 0 ? ' disabled' : '') + '>▲</button>'
+    +     '<button class="pl-mv" data-act="plan-down" data-i="' + i + '"' + (i === PLAN_ITEMS.length - 1 ? ' disabled' : '') + '>▼</button>'
+    +   '</div>'
+    +   '<button class="pl-del" data-act="plan-remove" data-i="' + i + '">✕</button>'
+    + '</div>'
+    + '</div>';
 }
 
 function renderPlan(){
-  if (!PLAN) return;
-  const P = PLAN;
-  let h = '<div class="plan-head">'
-        +   '<div class="ph-t">本日の練習プラン</div>'
-        +   '<div class="ph-m"><span>' + esc(P.grade) + '</span><span>' + P.people + '人</span><span>' + P.total + '分</span>'
-        +     P.focus.map(c => '<span>強化：' + esc(c) + '</span>').join('')
-        +   '</div>'
-        + '</div>';
+  const wrap = $('#plan-out');
+  if (!wrap) return;
+  planUpdateTotal();
 
-  h += '<div class="card">';
-  h += P.blocks.map((b, i) => {
-    const m = b.cands.length ? Store.menu(b.cands[b.idx]) : null;
-    let bc = '<div class="b-lbl">' + esc(b.label) + '</div>';
-    if (m){
-      bc += '<div class="b-name">' + esc(m.name) + '</div>'
-          + '<div class="b-meta">' + catChips(m)
-          +   '<span class="tbadge">標準' + (+m.time || 0) + '<small>分</small></span>'
-          +   '<span class="tbadge">' + esc(peopleLabel(m)) + '</span>'
-          + '</div>'
-          + '<div class="b-acts">'
-          +   '<button class="btn btn-ghost btn-sm" data-act="open-menu" data-id="' + esc(m.id) + '">詳細を見る</button>'
-          +   (b.cands.length > 1
-              ? '<button class="btn btn-ghost btn-sm" data-act="swap" data-bi="' + i + '">🔄 入れ替え</button>'
-              : '')
-          + '</div>';
-    } else {
-      bc += '<div class="b-name none">該当する登録メニューがありません（管理画面から追加できます）</div>';
-    }
-    return '<div class="block">'
-         +   '<div class="bt"><span class="tbadge">' + b.mins + '<small>分</small></span></div>'
-         +   '<div class="bc">' + bc + '</div>'
-         + '</div>';
-  }).join('');
-  h += '</div>';
+  if (!PLAN_ITEMS.length){
+    wrap.innerHTML = '<div class="empty">'
+      + '<div class="e-ic">📋</div>'
+      + '<div class="e-t">まだ何も追加されていません</div>'
+      + '<div class="e-d">「AI検索」や「相談」「教科書」で見つけた練習メニュー・指導ノートの<br><b>＋計画</b>ボタンを押すと、ここに集まります。<br>並べ替え・時間の調整・削除をして、本日のメニューを組み立てましょう。</div>'
+      + '</div>';
+    return;
+  }
 
-  h += '<div class="plan-total"><span class="pt-l">TOTAL ／ 合計時間</span><span class="pt-v">'
-     +   P.blocks.reduce((a, b) => a + b.mins, 0) + '分</span></div>';
-
-  h += '<div class="plan-acts">'
-     +   '<button class="btn" data-act="copy-plan">📋 テキストをコピー</button>'
-     +   '<button class="btn" data-act="regen-plan">↻ 生成し直す</button>'
-     + '</div>';
-
-  $('#plan-out').innerHTML = h;
-}
-
-function swapBlock(i){
-  const b = PLAN && PLAN.blocks[i];
-  if (!b || b.cands.length < 2){ toast('入れ替え候補がありません'); return; }
-  b.idx = (b.idx + 1) % b.cands.length;
-  renderPlan();
-  toast('入れ替えました（候補 ' + (b.idx + 1) + '／' + b.cands.length + '）');
+  let h = PLAN_ITEMS.map((it, i) => planRowHTML(it, i)).join('');
+  h += '<div class="plan-foot">'
+     + '<div class="plan-total"><span class="pt-l">合計（入力した時間の和）</span><span class="pt-v" id="plan-total-min">' + planTotalMin() + '分</span></div>'
+     + '<div class="plan-acts">'
+     +   '<button class="btn" data-act="plan-copy">📋 テキストをコピー</button>'
+     +   '<button class="btn btn-ghost btn-danger" data-act="plan-clear">すべて消去</button>'
+     + '</div></div>';
+  wrap.innerHTML = h;
 }
 
 function planText(){
-  const P = PLAN;
-  let t = '【練習プラン】' + P.grade + '・' + P.people + '人・' + P.total + '分\n';
-  t += '強化：' + P.focus.join('／') + '\n\n';
-  P.blocks.forEach((b, i) => {
-    const m = b.cands.length ? Store.menu(b.cands[b.idx]) : null;
-    t += (CIRC[i] || (i + 1) + '.') + ' ' + b.label + '（' + b.mins + '分）\n';
-    t += '　' + (m ? m.name : '（メニュー未定）') + '\n';
+  let t = '【本日の練習計画】\n\n';
+  PLAN_ITEMS.forEach((it, i) => {
+    const o = planResolve(it);
+    const min = it.min ? '（' + it.min + '分）' : (it.kind === 'menu' && o ? '（標準' + (+o.time || 0) + '分）' : '');
+    t += (CIRC[i] || (i + 1) + '.') + ' [' + (PLAN_KIND_LABEL[it.kind] || '') + '] ' + planTitle(it, o) + min + '\n';
   });
-  t += '\n合計 ' + P.blocks.reduce((a, b) => a + b.mins, 0) + '分　— Drill IQ';
+  t += '\n合計 ' + planTotalMin() + '分　— Drill IQ';
   return t;
 }
-
 function copyPlanText(){
-  if (!PLAN) return;
+  if (!PLAN_ITEMS.length){ toast('計画が空です'); return; }
   copyText(planText());
 }
 
@@ -3088,31 +3153,18 @@ function parseTextToSections(text){
     .replace(/\*\*(.+?)\*\*/g, '$1')   // 文中の**強調**は通常テキストに
     .trim();
 
-  // 箇条書き行か判定（* - ・ • ▪ ◦ や 数字. で始まる）
-  const isBulletLine = (s) => /^([\-–—・*•▪◦\u2022]\s+|[0-9０-９]+[\.\．、)）]\s+)/.test(String(s || '').trim());
-
-  for (let i = 0; i < lines.length; i++){
-    const line = lines[i].trim();
-    if (!line) continue;
-
-    // 明示的な見出し記号がある場合
-    let h = isHeading(line);
-    if (h){ cur = { heading: h, points: [] }; secs.push(cur); continue; }
-
-    // 記号なしの見出し推定：自分が箇条書きでなく短め、かつ次の非空行が箇条書きなら見出し扱い
-    if (!isBulletLine(line) && line.length <= 30 && !/[。、]$/.test(line)){
-      let j = i + 1;
-      while (j < lines.length && !lines[j].trim()) j++;
-      if (j < lines.length && isBulletLine(lines[j])){
-        cur = { heading: cleanHead(line), points: [] };
-        secs.push(cur);
-        continue;
-      }
+  lines.forEach(raw => {
+    const line = raw.trim();
+    if (!line){ return; }
+    const h = isHeading(line);
+    if (h){
+      cur = { heading: h, points: [] };
+      secs.push(cur);
+      return;
     }
-
-    // それ以外は箇条書き項目として追加
+    // 箇条書き行 or 文。長い文は句点で分割して要点化しすぎないよう、そのまま1項目に
     pushPoint(stripBullet(line));
-  }
+  });
 
   return secs.filter(s => s.points.length || s.heading);
 }
@@ -3423,7 +3475,8 @@ async function chatSend(text){
     thinkingEl.remove();
     appendChat('ai', ans);
     CHAT_HISTORY.push({ role: 'assistant', content: ans });
-    // 関連する登録メニューをカードで提示
+    // 関連する指導ノート・登録メニューをカードで提示
+    if (ctx.notes.length) appendChatNoteRefs(ctx.notes.slice(0, 3));
     if (ctx.menus.length) appendChatRefs(ctx.menus.slice(0, 4));
   } catch (err) {
     thinkingEl.classList.remove('thinking');
@@ -3451,6 +3504,17 @@ function appendChatRefs(menus){
   log.appendChild(wrap);
   wrap.scrollIntoView({ block: 'end' });
 }
+function appendChatNoteRefs(notes){
+  const log = $('#chat-log');
+  const wrap = document.createElement('div');
+  wrap.className = 'chat-refs';
+  wrap.innerHTML = '<div class="nc-lbl" style="color:var(--faint)">関連する指導ノート</div>'
+    + notes.map(n => '<div class="chat-ref" data-act="open-note" data-id="' + esc(n.id) + '">'
+        + '<span class="cr-ic">🗒️</span><div><div class="cr-name">' + esc(n.title) + '</div>'
+        + '<div class="cr-meta">' + esc((n.cats || []).join('・') || '指導ノート') + '</div></div></div>').join('');
+  log.appendChild(wrap);
+  wrap.scrollIntoView({ block: 'end' });
+}
 
 /* ============================================================
    イベント・初期化
@@ -3468,19 +3532,6 @@ function bindEvents(){
 
     if ('catchip' in el.dataset){ toggleCatChip(el); return; }
 
-    if (el.dataset.chip === 'time'){
-      $$('#pl-time-chips .chip').forEach(c => c.classList.toggle('on', c === el));
-      return;
-    }
-    if (el.dataset.chip === 'focus'){
-      if (!el.classList.contains('on') && $$('#pl-focus-chips .chip.on').length >= 3){
-        toast('強化項目は最大3つまでです');
-        return;
-      }
-      el.classList.toggle('on');
-      return;
-    }
-
     switch (el.dataset.act){
       case 'search':        runSearch($('#q').value); break;
       case 'ex':            runSearch(el.dataset.q); break;
@@ -3488,13 +3539,16 @@ function bindEvents(){
       case 'open-menu':     openMenuModal(el.dataset.id); break;
       case 'open-prin':     openPrinModal(el.dataset.id); break;
       case 'open-def':      openDefModal(el.dataset.id); break;
+      case 'open-note':     openNoteModal(el.dataset.id); break;
       case 'modal-close':   closeModal(); break;
       case 'book-cat':      BOOK.cat = el.dataset.v; renderBook(); break;
       case 'cat-add-new':   addNewCatToSelect(el); break;
-      case 'gen-plan':      onGenPlan(); break;
-      case 'swap':          swapBlock(+el.dataset.bi); break;
-      case 'copy-plan':     copyPlanText(); break;
-      case 'regen-plan':    onGenPlan(); break;
+      case 'plan-add':      planAdd(el.dataset.kind, el.dataset.id); break;
+      case 'plan-remove':   planRemove(+el.dataset.i); break;
+      case 'plan-up':       planMove(+el.dataset.i, -1); break;
+      case 'plan-down':     planMove(+el.dataset.i, 1); break;
+      case 'plan-copy':     copyPlanText(); break;
+      case 'plan-clear':    planClear(); break;
       case 'google-login':  Sync.login(); break;
       case 'adm-new-menu':  openMenuForm(null); break;
       case 'adm-edit-menu': openMenuForm(el.dataset.id); break;
@@ -3539,6 +3593,9 @@ function bindEvents(){
       const i = +e.target.getAttribute('data-ai-chk');
       if (AI_STAGE[i]) AI_STAGE[i].use = e.target.checked;
     }
+    if (e.target && e.target.dataset && e.target.dataset.act === 'plan-min'){
+      planSetMin(+e.target.dataset.i, e.target.value);
+    }
   });
 
   $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch($('#q').value); });
@@ -3552,15 +3609,12 @@ function bindEvents(){
 
 function init(){
   Store.load();
+  loadPlan();
 
   $('#ex-chips').innerHTML = EXAMPLES.map(x =>
     '<button class="chip" data-act="ex" data-q="' + esc(x) + '">' + esc(x) + '</button>').join('');
 
-  $('#pl-time-chips').innerHTML = PLAN_TIMES.map(t =>
-    '<button class="chip' + (t === 90 ? ' on' : '') + '" data-chip="time" data-v="' + t + '">' + t + '分</button>').join('');
-
-  $('#pl-focus-chips').innerHTML = allCats().map(c =>
-    '<button class="chip" data-chip="focus" data-v="' + esc(c) + '">' + esc(c) + '</button>').join('');
+  updatePlanBadge();
 
   bindEvents();
 
