@@ -1519,21 +1519,24 @@ function getBoards(item){
   return out;
 }
 
-/* フォーム表示用：作戦板リストを「名前 | URL」の複数行テキストに */
+/* フォーム表示用：作戦板リストを「名前 URL」の複数行テキストに */
 function boardsToText(item){
-  return getBoards(item).map(b => b.name ? (b.name + ' | ' + b.url) : b.url).join('\n');
+  return getBoards(item).map(b => b.name ? (b.name + ' ' + b.url) : b.url).join('\n');
 }
-/* フォーム入力用：複数行テキストを作戦板リスト[{name,url}]に */
+/* フォーム入力用：複数行テキストを作戦板リスト[{name,url}]に。
+   各行は「名前 URL」。URLは http(s):// から始まる部分とみなすので、
+   名前にスペースが含まれていても正しく分離できる。 */
 function textToBoards(text){
   return String(text || '').split(/\n+/).map(line => {
     line = line.trim();
     if (!line) return null;
-    const i = line.indexOf('|');
-    if (i >= 0){
-      const name = line.slice(0, i).trim();
-      const url = line.slice(i + 1).trim();
-      return url ? { name: name, url: url } : null;
+    const m = line.match(/https?:\/\/\S+/);     // 行内の最初のURLを探す
+    if (m){
+      const url = m[0];
+      const name = line.slice(0, m.index).trim();   // URLより前を名前とする
+      return { name: name, url: url };
     }
+    // URLが見つからない行はそのまま（後でboardEmbedInfoが弾く）
     return { name: '', url: line };
   }).filter(Boolean);
 }
@@ -2493,8 +2496,8 @@ function openMenuForm(id){
     + fld('よくあるミス（1行に1つ）', '<textarea id="f-mistakes" class="field" rows="3">' + esc((m.mistakes || []).join('\n')) + '</textarea>')
     + fld('検索キーワード（スペース区切り）', '<input id="f-kw" class="field" value="' + esc((m.kw || []).join(' ')) + '" placeholder="例：判断 速攻 アウトナンバー">')
     + fld('参考動画URL（任意・1行に1つ／複数可）', '<textarea id="f-vids" class="field" rows="3" placeholder="https://youtu.be/xxxx&#10;https://www.youtube.com/watch?v=yyyy" style="font-size:12.5px">' + esc(getVids(m).join('\n')) + '</textarea>')
-    + fld('作戦板リンク（Draw IQの共有URL・複数可）<br><span style="font-size:11px;color:var(--faint)">1行に1つ。「名前 | URL」の形で名前を付けられます（名前は省略可）</span>',
-        '<textarea id="f-board" class="field" rows="3" placeholder="ピック&ロール | https://draw-iq-iota.vercel.app/?embed=xxxx&#10;ゾーン攻め | https://draw-iq-iota.vercel.app/?embed=yyyy" style="font-size:12px">' + esc(boardsToText(m)) + '</textarea>')
+    + fld('作戦板リンク（Draw IQの共有URL・複数可）<br><span style="font-size:11px;color:var(--faint)">1行に1つ。「名前 半角スペース URL」の形で名前を付けられます（名前は省略可）</span>',
+        '<textarea id="f-board" class="field" rows="3" placeholder="ピック&ロール https://draw-iq-iota.vercel.app/?embed=xxxx&#10;ゾーン攻め https://draw-iq-iota.vercel.app/?embed=yyyy" style="font-size:12px">' + esc(boardsToText(m)) + '</textarea>')
     + '<button class="btn btn-acc btn-block" data-act="save-menu">保存する</button>';
 
   openModal(id ? '練習メニューを編集' : '練習メニューを追加', h);
@@ -3551,8 +3554,8 @@ function editNote(id){
     + fld('カテゴリー（複数選択可）', catOpts)
     + fld('内容（「# 見出し」で項目、「- 」で箇条書き）',
         '<textarea id="f-nbody" class="field" rows="12" style="font-size:14px;line-height:1.7">' + esc(noteToEditText(n)) + '</textarea>')
-    + fld('作戦板リンク（Draw IQの共有URL・複数可）<br><span style="font-size:11px;color:var(--faint)">1行に1つ。「名前 | URL」の形で名前を付けられます（名前は省略可）</span>',
-        '<textarea id="f-nboard" class="field" rows="3" placeholder="ピック&ロール | https://draw-iq-iota.vercel.app/?embed=xxxx&#10;ゾーン攻め | https://draw-iq-iota.vercel.app/?embed=yyyy" style="font-size:12px">' + esc(boardsToText(n)) + '</textarea>')
+    + fld('作戦板リンク（Draw IQの共有URL・複数可）<br><span style="font-size:11px;color:var(--faint)">1行に1つ。「名前 半角スペース URL」の形で名前を付けられます（名前は省略可）</span>',
+        '<textarea id="f-nboard" class="field" rows="3" placeholder="ピック&ロール https://draw-iq-iota.vercel.app/?embed=xxxx&#10;ゾーン攻め https://draw-iq-iota.vercel.app/?embed=yyyy" style="font-size:12px">' + esc(boardsToText(n)) + '</textarea>')
     + '<div style="display:flex;gap:8px;margin-top:6px">'
     +   '<button class="btn btn-acc" data-act="note-edit-save">保存</button>'
     +   '<button class="btn btn-ghost" data-act="modal-close">キャンセル</button>'
