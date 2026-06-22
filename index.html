@@ -419,6 +419,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 }
 .modal-bg.on{display:flex;animation:fin .18s ease}
 @keyframes fin{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
 .sheet{
   width:100%;max-width:680px;max-height:88dvh;display:flex;flex-direction:column;
   background:var(--panel);border:1px solid var(--line2);border-bottom:none;
@@ -632,7 +633,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.6.2';
+const APP_VER = '1.6.3';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -3148,8 +3149,8 @@ function _cleanLine(s){
 function _isDropLine(t){
   const s = String(t || '').trim();
   if (!s) return true;
-  // 区切り線（——— ─── --- === 等）
-  if (/^[\-–—―ー─━=＝_．.・\s]+$/.test(s) && /[-–—―ー─━=＝_]/.test(s)) return true;
+  // 区切り線（——— ─── --- === ⸻ 等／全角・特殊ダッシュも含む）
+  if (/^[\-–—―ー─━=＝_．.・⸺⸻⹀╴╶\s]+$/.test(s) && /[-–—―ー─━=＝_⸺⸻]/.test(s)) return true;
   // 矢印や記号だけ（↓ ↑ → ⇒ など、文字が実質ない）
   if (/^[↓↑→←⇒⇓⇑➡▶▼▲\s　]+$/.test(s)) return true;
   return false;
@@ -3211,15 +3212,27 @@ function _isStructuralWord(t){
 
 /* セクション配列を整える */
 function tidyNoteSections(sections){
+  // 0) 行内に「①②③」が複数ある／途中から始まる場合、番号の前で改行して分割。
+  //    例「基本は、①Aを防ぐ ②Bを防ぐ」→「基本は、」「①Aを防ぐ」「②Bを防ぐ」
+  const splitNumbered = (text) => {
+    const s = String(text || '');
+    // 丸数字①-⑳ の直前で分割（先頭の①は分割対象にしない）
+    const parts = s.split(/(?=[①-⑳])/).map(x => x.trim()).filter(Boolean);
+    return parts.length ? parts : [s];
+  };
+
   // 1) フラットな行列に展開。区切り線・矢印だけの行はここで捨てる。
   const flat = [];
+  const pushLine = (text, isHead) => {
+    const c = _cleanLine(text);
+    if (c && !_isDropLine(c)) flat.push({ head: isHead, text: c, orig: isHead });
+  };
   (sections || []).forEach(sec => {
     const h = _cleanLine(sec.heading);
     if (h && !_isDropLine(h)) flat.push({ head: true, text: h, orig: true });
     const pts = Array.isArray(sec.points) ? sec.points : (sec.summary ? [sec.summary] : []);
     pts.forEach(p => {
-      const c = _cleanLine(p);
-      if (c && !_isDropLine(c)) flat.push({ head: false, text: c, orig: false });
+      splitNumbered(p).forEach(seg => pushLine(seg, false));
     });
   });
 
@@ -3297,7 +3310,77 @@ function tidyNoteSections(sections){
   return out.filter(s => s.heading || s.points.length);
 }
 
-/* 整形の前後で実質的に変化があるか（見出し/箇条書きの構造比較） */
+/* ノートから指導の原則・考え方をAIで抽出して「原則」に追加する */
+async function extractPrinciplesFromNote(id){
+  const n = Store.note ? Store.note(id) : (Store.notes || []).find(x => x.id === id);
+  if (!n){ toast('ノートが見つかりません'); return; }
+
+  // ノート本文をテキスト化
+  const secs = Array.isArray(n.sections) && n.sections.length ? n.sections : [];
+  const text = secs.map(s => (s.heading ? '■' + s.heading + '\n' : '') + (s.points || []).map(p => '・' + p).join('\n')).join('\n');
+  if (!text.trim()){ toast('このノートには抽出できる内容がありません'); return; }
+
+  const cats = allCats().join('、');
+  const sys = 'あなたはバスケットボール指導の専門家です。指導ノートから、チームで共有すべき「原則・考え方」を抽出して整理します。'
+    + '各原則は、指導現場でそのまま使える普遍的な指針にしてください。具体的なドリル手順ではなく、判断や行動の指針（〜する、〜を優先する、など）を抽出します。'
+    + '出力は必ずJSON配列のみ。前後の説明やマークダウンは一切付けないこと。'
+    + '各要素は {"title":"原則の名前(20字程度)", "cat":"カテゴリー", "body":"100〜200字の説明", "kw":["キーワード", ...]} の形式。'
+    + 'catは次から最も近いものを選ぶ：' + cats + '。'
+    + '抽出できる原則は2〜6個程度。ノートの内容から無理に増やさず、本質的なものだけにすること。';
+  const usr = '次の指導ノートから原則・考え方を抽出してください。\n\n【タイトル】' + (n.title || '') + '\n\n' + text;
+
+  const overlay = _showBusy('AIがノートから原則を抽出しています…');
+  let arr = null;
+  try {
+    const res = await callAI([{ role: 'user', content: usr }], sys, 1600);
+    const clean = String(res).replace(/```json/gi, '').replace(/```/g, '').trim();
+    const m = clean.match(/\[[\s\S]*\]/);
+    arr = JSON.parse(m ? m[0] : clean);
+  } catch (e){
+    _hideBusy(overlay);
+    alert('原則の抽出に失敗しました。\n' + (e && e.message ? e.message : ''));
+    return;
+  }
+  _hideBusy(overlay);
+
+  if (!Array.isArray(arr) || !arr.length){ toast('抽出できる原則が見つかりませんでした'); return; }
+
+  // 正規化
+  const drafts = arr.map(o => ({
+    id: uid('pr'),
+    title: String(o.title || o.名前 || o.見出し || '原則').trim().slice(0, 60),
+    cat: registerCat(String(o.cat || o.カテゴリー || o.category || '').trim()) || 'チームオフェンス',
+    body: String(o.body || o.説明 || o.内容 || '').trim(),
+    kw: _kw(o.kw || o.keywords || o.キーワード)
+  })).filter(d => d.title && d.body);
+
+  if (!drafts.length){ toast('抽出できる原則が見つかりませんでした'); return; }
+
+  // プレビュー
+  const preview = drafts.map((d, i) => (i + 1) + '. 【' + d.cat + '】' + d.title).join('\n');
+  if (!confirm('このノートから ' + drafts.length + ' 件の原則を抽出しました。\n\n' + preview + '\n\n「原則」に追加しますか？（後から管理画面で編集・削除できます）')) return;
+
+  Store.principles = (Store.principles || []).concat(drafts);
+  Store.save();
+  Sync.push();
+  toast(drafts.length + ' 件の原則を追加しました');
+}
+
+/* 処理中オーバーレイ（簡易） */
+function _showBusy(msg){
+  let el = document.getElementById('busy-overlay');
+  if (!el){
+    el = document.createElement('div');
+    el.id = 'busy-overlay';
+    el.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:#fff;font-size:14px;text-align:center;padding:24px';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = '<div style="width:34px;height:34px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite"></div><div>' + esc(msg || '処理中…') + '</div>';
+  el.style.display = 'flex';
+  return el;
+}
+function _hideBusy(el){ const x = el || document.getElementById('busy-overlay'); if (x) x.style.display = 'none'; }
+
 function _sectionsSignature(secs){
   return (secs || []).map(s =>
     (s.heading ? 'H:' + s.heading : '') + '|' +
@@ -3716,6 +3799,7 @@ function noteCard(n){
     +   boardHTML(n)
     +   '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
     +     '<button class="btn btn-acc btn-sm" data-act="plan-add" data-kind="note" data-id="' + esc(n.id) + '">＋計画に追加</button>'
+    +     '<button class="btn btn-ghost btn-sm" data-act="note-extract" data-id="' + esc(n.id) + '">⚡ 原則を抽出</button>'
     +     '<button class="btn btn-ghost btn-sm" data-act="note-edit" data-id="' + esc(n.id) + '">編集</button>'
     +     '<button class="btn btn-ghost btn-sm btn-danger" data-act="note-del" data-id="' + esc(n.id) + '">削除</button>'
     +   '</div>'
@@ -4045,6 +4129,7 @@ function bindEvents(){
       case 'adm-reset':     resetAll(); break;
       case 'adm-reclassify': reclassifyMenus(); break;
       case 'adm-tidy-notes': tidyAllNotes(); break;
+      case 'note-extract':  extractPrinciplesFromNote(el.dataset.id); break;
       case 'note-summarize': summarizeNote(); break;
       case 'note-manual':    manualNote(); break;
       case 'note-pick-file': { const fi = $('#note-file'); if (fi) fi.click(); } break;

@@ -1,5 +1,5 @@
 /* Drill IQ Service Worker */
-const CACHE = 'drilliq-v15';
+const CACHE = 'drilliq-v16';
 const ASSETS = [
   './',
   './index.html',
