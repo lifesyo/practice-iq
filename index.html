@@ -644,7 +644,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.6.5';
+const APP_VER = '1.6.6';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -3382,7 +3382,10 @@ function _parsePrincipleArray(res){
    ============================================================ */
 function _isSubLabel(t){
   const s = String(t || '').replace(/[：:]\s*$/, '').trim();
-  return /^(特徴|強み|弱み|長所|短所|メリット|デメリット|指導ポイント|ポイント|定義|例|具体例|目的|ねらい|狙い|理由|まとめ|注意点|使いどころ|使う場面|対策|キーワード|手順|流れ|種類|分類|概要|背景|前提)$/.test(s);
+  if (/^(特徴|強み|弱み|長所|短所|メリット|デメリット|指導ポイント|ポイント|定義|例|具体例|目的|ねらい|狙い|理由|まとめ|注意点|使いどころ|使う場面|対策|キーワード|手順|流れ|種類|分類|概要|背景|前提)$/.test(s)) return true;
+  // 「攻撃の考え方」「守備の考え方」「オフェンスの目的」など
+  if (/(の考え方|の目的|の方法|のやり方|の使い方|の狙い|のねらい|の役割|の優先順位)$/.test(s) && s.length <= 18) return true;
+  return false;
 }
 function _looksLikeMajor(t){
   const s = String(t || '').trim();
@@ -3407,29 +3410,32 @@ function restructureToTwoLevel(sections){
     }
   });
 
-  const isMajorAt = (i) => {
-    const t = lines[i].text;
-    if (_looksLikeMajor(t)) return true;
-    if (i + 1 < lines.length){
-      const nt = lines[i + 1].text;
-      return _isSubLabel(nt) && !_isSentence(t) && !/[。、，．]$/.test(t) && t.length <= 30;
-    }
-    return false;
-  };
-
   const out = [];
   let major = null, group = null;
+  let lastWasPoint = false;          // 直前が箇条書き項目だったか
+  let lastPointWasSentence = false;  // 直前の項目が句点で終わる文だったか
   const ensureMajor = (h) => { major = { heading: h || '', groups: [] }; group = null; out.push(major); };
   const ensureGroup = (l) => { if (!major) ensureMajor(''); group = { label: l || '', points: [] }; major.groups.push(group); };
 
   lines.forEach((ln, i) => {
     const t = ln.text;
     if (!t) return;
-    if (isMajorAt(i)){ ensureMajor(t); return; }
-    if (_isSubLabel(t)){ ensureGroup(t.replace(/[：:]\s*$/, '')); return; }
+    const nextIsSub = (i + 1 < lines.length) && _isSubLabel(lines[i + 1].text);
+    const nounish = !_isSentence(t) && !/[。、，．]$/.test(t) && t.length <= 30;
+    let major2 = false;
+    if (_looksLikeMajor(t)) major2 = true;
+    else if (nextIsSub && nounish){
+      // リスト直後でも、直前が「文（。で終わる）」なら新セクションとみなす。
+      // 名詞句リスト（Wide Open等）の途中なら昇格しない。
+      if (!lastWasPoint || lastPointWasSentence) major2 = true;
+    }
+    if (major2){ ensureMajor(t); lastWasPoint = false; lastPointWasSentence = false; return; }
+    if (_isSubLabel(t)){ ensureGroup(t.replace(/[：:]\s*$/, '')); lastWasPoint = false; lastPointWasSentence = false; return; }
     if (!major) ensureMajor('');
     if (!group) ensureGroup('');
     group.points.push(t);
+    lastWasPoint = true;
+    lastPointWasSentence = /[。．]$/.test(t);
   });
 
   out.forEach(m => { m.groups = (m.groups || []).filter(g => g.label || (g.points && g.points.length)); });
