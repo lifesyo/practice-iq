@@ -369,6 +369,13 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .notecard .nc-points,.note-prev .nc-points{margin:5px 0 0;padding-left:20px}
 .notecard .nc-points li,.note-prev .nc-points li{font-size:14px;line-height:1.7;margin:2px 0}
 .notecard .nc-lbl{font-size:11px;font-weight:800;color:var(--acc);letter-spacing:.05em;margin-bottom:3px}
+/* 2階層：大見出し（システム名など）と小見出し（特徴・強み等） */
+.notecard .nc-sec-major,.note-prev .nc-sec-major{margin-top:16px;padding:11px 13px;background:linear-gradient(135deg,#1a1410,#13100c);border:1px solid #3a2a1a;border-radius:12px}
+.notecard .nc-sec-major:first-child,.note-prev .nc-sec-major:first-child{margin-top:6px}
+.notecard .nc-lbl-major,.note-prev .nc-lbl-major{font-size:15px;font-weight:900;color:#FF8A3D;letter-spacing:.02em;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #3a2a1a}
+.notecard .nc-sublbl,.note-prev .nc-sublbl{font-size:11.5px;font-weight:800;color:var(--acc);letter-spacing:.04em;margin:9px 0 2px}
+.note-prev .nc-points{margin:5px 0 0;padding-left:20px}
+.note-prev .nc-points li{font-size:14px;line-height:1.7;margin:2px 0}
 .notecard ul{margin:0;padding-left:18px}
 .notecard li{font-size:13.5px;line-height:1.7;margin:1px 0}
 .note-prev{background:var(--panel2);border:1px solid var(--acc-line);border-radius:12px;padding:13px}
@@ -637,7 +644,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.6.4';
+const APP_VER = '1.6.5';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -3370,6 +3377,76 @@ function _parsePrincipleArray(res){
   throw new Error('AIの応答を解析できませんでした');
 }
 
+/* ============================================================
+   ノートを2階層（大見出し→小見出し→箇条書き）に再構成（ルールベース）
+   ============================================================ */
+function _isSubLabel(t){
+  const s = String(t || '').replace(/[：:]\s*$/, '').trim();
+  return /^(特徴|強み|弱み|長所|短所|メリット|デメリット|指導ポイント|ポイント|定義|例|具体例|目的|ねらい|狙い|理由|まとめ|注意点|使いどころ|使う場面|対策|キーワード|手順|流れ|種類|分類|概要|背景|前提)$/.test(s);
+}
+function _looksLikeMajor(t){
+  const s = String(t || '').trim();
+  if (!s) return false;
+  if (_isSubLabel(s)) return false;
+  if (_isSentence(s)) return false;
+  if (/[。、，．！？]$/.test(s)) return false;
+  if (/[（(][A-Za-z][A-Za-z0-9 \-/&'.]*[)）]\s*$/.test(s)) return true;  // 「○○（English）」
+  return false;
+}
+function restructureToTwoLevel(sections){
+  const lines = [];
+  (sections || []).forEach(sec => {
+    if (sec.heading) lines.push({ text: String(sec.heading).trim() });
+    if (Array.isArray(sec.groups)){
+      sec.groups.forEach(g => {
+        if (g.label) lines.push({ text: String(g.label).trim() });
+        (g.points || []).forEach(p => lines.push({ text: String(p).trim() }));
+      });
+    } else {
+      (sec.points || []).forEach(p => lines.push({ text: String(p).trim() }));
+    }
+  });
+
+  const isMajorAt = (i) => {
+    const t = lines[i].text;
+    if (_looksLikeMajor(t)) return true;
+    if (i + 1 < lines.length){
+      const nt = lines[i + 1].text;
+      return _isSubLabel(nt) && !_isSentence(t) && !/[。、，．]$/.test(t) && t.length <= 30;
+    }
+    return false;
+  };
+
+  const out = [];
+  let major = null, group = null;
+  const ensureMajor = (h) => { major = { heading: h || '', groups: [] }; group = null; out.push(major); };
+  const ensureGroup = (l) => { if (!major) ensureMajor(''); group = { label: l || '', points: [] }; major.groups.push(group); };
+
+  lines.forEach((ln, i) => {
+    const t = ln.text;
+    if (!t) return;
+    if (isMajorAt(i)){ ensureMajor(t); return; }
+    if (_isSubLabel(t)){ ensureGroup(t.replace(/[：:]\s*$/, '')); return; }
+    if (!major) ensureMajor('');
+    if (!group) ensureGroup('');
+    group.points.push(t);
+  });
+
+  out.forEach(m => { m.groups = (m.groups || []).filter(g => g.label || (g.points && g.points.length)); });
+  return out.filter(m => m.heading || (m.groups && m.groups.length));
+}
+function _twoLevelToText(secs){
+  return (secs || []).map(s => {
+    let t = s.heading ? ('▼ ' + s.heading + '\n') : '';
+    (s.groups || []).forEach(g => {
+      if (g.label) t += '  【' + g.label + '】\n';
+      (g.points || []).forEach(p => t += '    ・' + p + '\n');
+    });
+    if (!s.groups || !s.groups.length) (s.points || []).forEach(p => t += '  ・' + p + '\n');
+    return t;
+  }).join('');
+}
+
 /* ノートから指導の原則・考え方をAIで抽出して「原則」に追加する */
 async function extractPrinciplesFromNote(id){
   const n = Store.note ? Store.note(id) : (Store.notes || []).find(x => x.id === id);
@@ -3444,6 +3521,47 @@ function _sectionsSignature(secs){
     (s.heading ? 'H:' + s.heading : '') + '|' +
     (Array.isArray(s.points) ? s.points.join('¶') : '')
   ).join('§');
+}
+
+/* 1つのノートを2階層に整える（プレビューで確認してから適用） */
+function restructureNote(id){
+  const n = Store.note ? Store.note(id) : (Store.notes || []).find(x => x.id === id);
+  if (!n){ toast('ノートが見つかりません'); return; }
+
+  const newSecs = restructureToTwoLevel(n.sections || []);
+  if (!newSecs.length){ toast('整える内容がありません'); return; }
+
+  // プレビュー（変換後）を表示して確認
+  const previewHtml = '<div class="note-prev">'
+    + '<div class="nc-title">' + esc(n.title || '') + '</div>'
+    + '<div style="font-size:11.5px;color:var(--faint);margin:6px 0 10px">この形に整えます（大見出し → 小見出し → 箇条書き）。よければ「この形にする」を押してください。</div>'
+    + noteSectionsHTML({ sections: newSecs })
+    + '<div style="display:flex;gap:8px;margin-top:14px">'
+    +   '<button class="btn btn-acc" data-act="note-restructure-apply" data-id="' + esc(n.id) + '">この形にする</button>'
+    +   '<button class="btn btn-ghost" data-act="modal-close">キャンセル</button>'
+    + '</div></div>';
+  // 変換後を一時保持
+  Store._restructureDraft = { id: n.id, secs: newSecs };
+  openModal('🏗️ 階層を整える（プレビュー）', previewHtml);
+}
+function applyRestructure(id){
+  const d = Store._restructureDraft;
+  if (!d || d.id !== id){ toast('やり直してください'); return; }
+  const n = Store.note ? Store.note(id) : (Store.notes || []).find(x => x.id === id);
+  if (!n){ closeModal(); return; }
+  n.sections = d.secs;
+  // summary も更新（検索用）
+  n.summary = d.secs.map(s => {
+    const head = s.heading ? s.heading + '：' : '';
+    const body = (s.groups || []).map(g => (g.label ? g.label + ' ' : '') + (g.points || []).join(' / ')).join(' / ');
+    return head + body;
+  }).join('\n');
+  Store._restructureDraft = null;
+  Store.save();
+  Sync.push();
+  closeModal();
+  toast('2階層に整えました');
+  if (typeof renderBook === 'function') renderBook();
 }
 
 function tidyAllNotes(){
@@ -3529,15 +3647,25 @@ function normalizeNote(o){
       let points = [];
       if (s && Array.isArray(s.points)) points = s.points.map(x => String(x || '').trim()).filter(Boolean);
       else if (s && (s.summary || s.body)) points = _splitText(s.summary || s.body);
-      return { heading: String((s && s.heading) || '').trim(), points: points };
-    }).filter(s => s.points.length);
+      const sec = { heading: String((s && s.heading) || '').trim(), points: points };
+      // 2階層 groups を保持
+      if (s && Array.isArray(s.groups) && s.groups.length){
+        sec.groups = s.groups.map(g => ({
+          label: String((g && g.label) || '').trim(),
+          points: (g && Array.isArray(g.points) ? g.points.map(x => String(x || '').trim()).filter(Boolean) : [])
+        })).filter(g => g.label || g.points.length);
+        if (!sec.groups.length) delete sec.groups;
+      }
+      return sec;
+    }).filter(s => s.points.length || (s.groups && s.groups.length) || s.heading);
   }
   if (!sections.length){
     const pts = Array.isArray(o.points) ? o.points.map(x => String(x||'').trim()).filter(Boolean)
               : (o.summary ? _splitText(o.summary) : []);
     if (pts.length) sections = [{ heading: '', points: pts }];
   }
-  const allText = sections.map(s => s.heading + ' ' + s.points.join(' ')).join(' ');
+  const allText = sections.map(s => s.heading + ' ' + (s.points || []).join(' ')
+    + ' ' + (s.groups || []).map(g => g.label + ' ' + (g.points||[]).join(' ')).join(' ')).join(' ');
   const explicit = _arr(o.cats || o.categories).map(c => registerCat(c)).filter(Boolean);
   const cats = explicit.length ? explicit
     : _classifyCats('', [o.title, allText, kw.join(' ')]);
@@ -3547,7 +3675,13 @@ function normalizeNote(o){
     source: String(o.source || '').trim(),
     raw: String(o.raw || '').trim(),
     sections: sections,
-    summary: sections.map(s => (s.heading ? s.heading + '：' : '') + s.points.join(' / ')).join('\n'),
+    summary: sections.map(s => {
+      const head = s.heading ? s.heading + '：' : '';
+      if (s.groups && s.groups.length){
+        return head + s.groups.map(g => (g.label ? g.label + ' ' : '') + (g.points || []).join(' / ')).join(' / ');
+      }
+      return head + (s.points || []).join(' / ');
+    }).join('\n'),
     cats: cats,
     cat: cats[0] || '',
     kw: kw,
@@ -3784,6 +3918,18 @@ function noteSectionsHTML(n){
     secs = [{ heading: '', points: String(n.summary).split('\n').map(s => s.trim()).filter(Boolean) }];
   }
   return secs.map(s => {
+    // 2階層：groups があれば 大見出し → 小見出し → 箇条書き
+    if (Array.isArray(s.groups) && s.groups.length){
+      const inner = s.groups.map(g => {
+        const pts = (Array.isArray(g.points) ? g.points : []).filter(Boolean);
+        return (g.label ? '<div class="nc-sublbl">' + esc(g.label) + '</div>' : '')
+          + (pts.length ? '<ul class="nc-points">' + pts.map(p => '<li>' + esc(p) + '</li>').join('') + '</ul>' : '');
+      }).join('');
+      return '<div class="nc-sec nc-sec-major">'
+        + (s.heading ? '<div class="nc-lbl nc-lbl-major">' + esc(s.heading) + '</div>' : '')
+        + inner + '</div>';
+    }
+    // 1階層（従来）
     const pts = Array.isArray(s.points) ? s.points : (s.summary ? [s.summary] : []);
     return '<div class="nc-sec">'
       + (s.heading ? '<div class="nc-lbl">' + esc(s.heading) + '</div>' : '')
@@ -3857,6 +4003,7 @@ function noteCard(n){
     +   boardHTML(n)
     +   '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
     +     '<button class="btn btn-acc btn-sm" data-act="plan-add" data-kind="note" data-id="' + esc(n.id) + '">＋計画に追加</button>'
+    +     '<button class="btn btn-ghost btn-sm" data-act="note-restructure" data-id="' + esc(n.id) + '">🏗️ 階層を整える</button>'
     +     '<button class="btn btn-ghost btn-sm" data-act="note-extract" data-id="' + esc(n.id) + '">⚡ 原則を抽出</button>'
     +     '<button class="btn btn-ghost btn-sm" data-act="note-edit" data-id="' + esc(n.id) + '">編集</button>'
     +     '<button class="btn btn-ghost btn-sm btn-danger" data-act="note-del" data-id="' + esc(n.id) + '">削除</button>'
@@ -3870,30 +4017,61 @@ function noteToEditText(n){
   const secs = Array.isArray(n.sections) && n.sections.length ? n.sections
     : [{ heading: '', points: (n.summary || '').split('\n').map(s => s.trim()).filter(Boolean) }];
   return secs.map(s => {
+    // 2階層：# 大見出し / ## 小見出し / - 箇条書き
+    if (Array.isArray(s.groups) && s.groups.length){
+      let t = s.heading ? ('# ' + s.heading + '\n') : '';
+      t += s.groups.map(g => {
+        const sub = g.label ? ('## ' + g.label + '\n') : '';
+        const pts = (g.points || []).map(p => '- ' + p).join('\n');
+        return sub + pts;
+      }).join('\n');
+      return t;
+    }
+    // 1階層
     const head = s.heading ? ('# ' + s.heading + '\n') : '';
     const pts = (Array.isArray(s.points) ? s.points : []).map(p => '- ' + p).join('\n');
     return head + pts;
   }).join('\n\n');
 }
-/* 構造化テキストを sections に戻す */
+/* 構造化テキストを sections に戻す（# 大見出し / ## 小見出し / - 箇条書き） */
 function editTextToSections(text){
   const lines = String(text || '').split('\n');
   const secs = [];
-  let cur = null;
+  let cur = null;       // 現在のセクション
+  let group = null;     // 現在の小見出しグループ
+  let hasGroup = false; // このセクションに ## が出たか
   lines.forEach(raw => {
     const line = raw.trim();
-    if (!line){ return; }
-    if (line.startsWith('#')){
-      cur = { heading: line.replace(/^#+\s*/, '').trim(), points: [] };
+    if (!line) return;
+    const subMatch = /^##\s*/.test(line);
+    const majMatch = !subMatch && /^#\s*/.test(line);
+    if (majMatch){
+      cur = { heading: line.replace(/^#+\s*/, '').trim(), points: [], groups: [] };
+      group = null; hasGroup = false;
       secs.push(cur);
+    } else if (subMatch){
+      if (!cur){ cur = { heading: '', points: [], groups: [] }; secs.push(cur); }
+      group = { label: line.replace(/^#+\s*/, '').trim(), points: [] };
+      cur.groups.push(group);
+      hasGroup = true;
     } else {
       const p = line.replace(/^[-・*•]\s*/, '').trim();
       if (!p) return;
-      if (!cur){ cur = { heading: '', points: [] }; secs.push(cur); }
-      cur.points.push(p);
+      if (!cur){ cur = { heading: '', points: [], groups: [] }; secs.push(cur); }
+      if (group) group.points.push(p);
+      else cur.points.push(p);
     }
   });
-  return secs.filter(s => s.points.length || s.heading);
+  // groups を使ったセクションは points を空に、使わないセクションは groups を消す（クリーンな構造に）
+  secs.forEach(s => {
+    if (s.groups && s.groups.length){
+      s.groups = s.groups.filter(g => g.label || g.points.length);
+      // ## より前にあった素の points は major 直下の導入として残す
+    } else {
+      delete s.groups;
+    }
+  });
+  return secs.filter(s => (s.points && s.points.length) || (s.groups && s.groups.length) || s.heading);
 }
 
 function editNote(id){
@@ -4188,6 +4366,8 @@ function bindEvents(){
       case 'adm-reclassify': reclassifyMenus(); break;
       case 'adm-tidy-notes': tidyAllNotes(); break;
       case 'note-extract':  extractPrinciplesFromNote(el.dataset.id); break;
+      case 'note-restructure':       restructureNote(el.dataset.id); break;
+      case 'note-restructure-apply': applyRestructure(el.dataset.id); break;
       case 'note-summarize': summarizeNote(); break;
       case 'note-manual':    manualNote(); break;
       case 'note-pick-file': { const fi = $('#note-file'); if (fi) fi.click(); } break;
