@@ -632,7 +632,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.6.1';
+const APP_VER = '1.6.2';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -3137,16 +3137,22 @@ function reclassifyMenus(){
 function _cleanLine(s){
   return String(s || '')
     .replace(/\*\*/g, '')
-    .replace(/^[\s#■●▶◆◎○・*•▪◦]+/, '')
+    .replace(/^[\s#■●▶◆◎○・*•▪◦]+/, '')          // 行頭の箇条書き記号
+    .replace(/^[\s]*[→⇒➡▶👉=]+[\s　]*/, '')         // 行頭の矢印（→ ⇒ ➡ など）＋続く空白
     .replace(/[【】]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-/* 区切り線だけの行か（——— ─── --- === 等） */
-function _isDivider(t){
+/* 削除すべき行か：区切り線（———）や、矢印・記号だけの中身のない行 */
+function _isDropLine(t){
   const s = String(t || '').trim();
-  return s.length > 0 && /^[\-–—―ー─━=＝_．.・\s]+$/.test(s) && /[-–—―ー─━=＝_]/.test(s);
+  if (!s) return true;
+  // 区切り線（——— ─── --- === 等）
+  if (/^[\-–—―ー─━=＝_．.・\s]+$/.test(s) && /[-–—―ー─━=＝_]/.test(s)) return true;
+  // 矢印や記号だけ（↓ ↑ → ⇒ など、文字が実質ない）
+  if (/^[↓↑→←⇒⇓⇑➡▶▼▲\s　]+$/.test(s)) return true;
+  return false;
 }
 
 /* この行は「文の途中で終わっている」か（次の行に続く） */
@@ -3193,37 +3199,39 @@ function _looksLikeHeading(text){
 /* 「定義」「例」「まとめ」など、単独で見出しになりやすい既知の語 */
 function _isStructuralWord(t){
   const s = String(t || '').replace(/[：:]\s*$/, '').trim();
-  return /^(定義|例|まとめ|ポイント|目的|理由|手順|注意点|概要|背景|結論|補足|種類|分類)$/.test(s)
-    || /の(例|定義|目的|種類|ポイント|手順|まとめ)$/.test(s);
+  // 番号始まり（①②③ 1. など）は項目なので見出し語扱いしない
+  if (/^[①-⑳0-9０-９][\.\．、)）]?/.test(s)) return false;
+  // 単独の見出し語
+  if (/^(定義|例|まとめ|ポイント|指導ポイント|目的|理由|手順|注意点|概要|背景|結論|補足|種類|分類|キーワード|ねらい|狙い)$/.test(s)) return true;
+  // 「〜の例」「〜を作る」等の見出しらしい語尾は、短い句に限る（文や長い行は除外）
+  if (s.length <= 16 && !/[。、，．]/.test(s) &&
+      /(の例|の定義|の目的|の種類|のポイント|の手順|のまとめ|を作る|を消す|を防ぐ|を作らせない|を解消する)$/.test(s)) return true;
+  return false;
 }
 
 /* セクション配列を整える */
 function tidyNoteSections(sections){
-  // 1) フラットな行列に展開（見出しマーカー付き）
+  // 1) フラットな行列に展開。区切り線・矢印だけの行はここで捨てる。
   const flat = [];
   (sections || []).forEach(sec => {
     const h = _cleanLine(sec.heading);
-    if (h) flat.push({ head: true, text: h, orig: true });
+    if (h && !_isDropLine(h)) flat.push({ head: true, text: h, orig: true });
     const pts = Array.isArray(sec.points) ? sec.points : (sec.summary ? [sec.summary] : []);
-    pts.forEach(p => { const c = _cleanLine(p); if (c) flat.push({ head: false, text: c, orig: false }); });
+    pts.forEach(p => {
+      const c = _cleanLine(p);
+      if (c && !_isDropLine(c)) flat.push({ head: false, text: c, orig: false });
+    });
   });
 
-  // 2) 区切り線を除去し、「直後の行」に印（見出し化の有力な手がかり）
-  const noDiv = [];
-  let dividerPending = false;
-  flat.forEach(item => {
-    if (!item.head && _isDivider(item.text)){ dividerPending = true; return; }
-    item.afterDivider = dividerPending;
-    dividerPending = false;
-    noDiv.push(item);
-  });
-
-  // 3) 分断された文を結合（見出しでない隣接行のみ）
+  // 2) 分断された文を結合（見出しでない隣接行のみ）。
+  //    ただし「①②」などの番号始まりの行は独立した項目として保つため、結合の起点にしない。
+  const startsNumber = (s) => /^[①-⑳0-9０-９][\.\．、)）]?/.test(String(s).trim());
   const joined = [];
-  noDiv.forEach(item => {
+  flat.forEach(item => {
     const prev = joined.length ? joined[joined.length - 1] : null;
-    if (!item.head && prev && !prev.head && !item.afterDivider){
-      if (_endsOpen(prev.text) || _isTail(item.text)){
+    if (!item.head && prev && !prev.head){
+      // 今の行が番号始まりなら新項目（結合しない）
+      if (!startsNumber(item.text) && (_endsOpen(prev.text) || _isTail(item.text)) && !startsNumber(prev.text === '' ? 'x' : '')){
         prev.text = (prev.text + item.text).replace(/\s+/g, ' ').trim();
         return;
       }
@@ -3231,30 +3239,49 @@ function tidyNoteSections(sections){
     joined.push(Object.assign({}, item));
   });
 
-  // 4) 見出し⇔箇条書きの再判定（昇格は慎重に）
-  joined.forEach(item => {
+  // 3) 見出し⇔箇条書きの再判定
+  //    方針：「文章になっていない名詞句」で、かつ「直後の行が説明文（＝文章）」なら見出し。
+  //          名詞句が並んでいるだけ（次も名詞句）はリスト項目のまま。
+  const isNounPhrase = (t) => {
+    const s = String(t || '').replace(/[：:]\s*$/, '').trim();
+    if (!s) return false;
+    if (_isSentence(s)) return false;            // 文章は名詞句でない
+    if (/[。、，．！？]$/.test(s)) return false;   // 句読点で終わるものは除外
+    if (startsNumber(s)) return false;           // ①②… は項目として扱う
+    return s.length <= 34;
+  };
+  joined.forEach((item, idx) => {
     if (item.head){
-      // 元から見出しでも、文章っぽければ箇条書きに降格
-      if (item.text.length > 30 && /[。、，．]/.test(item.text)) item.head = false;
-    } else {
-      // 昇格は「強い手がかり」がある時だけ：
-      //  ・区切り線の直後の短い行
-      //  ・「定義」「例」などの構造語
-      //  ・コロンで終わる短い行
-      const t = item.text;
-      const colonHead = /[：:]$/.test(t) && t.replace(/[：:]\s*$/, '').length <= 28;
-      // 区切り線の直後は強い手がかり：文でなく適度な長さなら見出しに
-      const afterDivHead = item.afterDivider && !_isSentence(t) && !/[。、，．]$/.test(t) && t.length <= 30;
-      if (afterDivHead || _isStructuralWord(t) || colonHead || (item.afterDivider && _looksLikeHeading(t))){
-        item.head = true;
-        item.promoted = true;
+      // 元から見出しでも、明らかに文章なら箇条書きに降格
+      if (_isSentence(item.text) && item.text.length > 24) item.head = false;
+      return;
+    }
+    const t = item.text;
+    // 構造語・コロン終わりは無条件で見出し
+    const colonHead = /[：:]$/.test(t) && t.replace(/[：:]\s*$/, '').length <= 28;
+    if (_isStructuralWord(t) || colonHead){ item.head = true; return; }
+
+    // 名詞句 ＆ 直後の行が「説明文（文章）」なら見出しに昇格。
+    // ただし「前の行も名詞句（＝リストの途中）」なら昇格しない（リストの最後が文でも巻き込まない）。
+    if (isNounPhrase(t)){
+      // 直前の中身行
+      let prev = null;
+      for (let j = idx - 1; j >= 0; j--){ prev = joined[j]; break; }
+      const prevIsSiblingItem = prev && !prev.head && isNounPhrase(prev.text);
+      if (prevIsSiblingItem) return;   // リストの途中なので項目のまま
+
+      // 次の中身行
+      let next = null;
+      for (let j = idx + 1; j < joined.length; j++){ next = joined[j]; break; }
+      if (next && !next.head){
+        const nt = next.text;
+        // 次が「文章」なら見出し。ただし次も名詞句ならリスト継続なので昇格しない。
+        if (!isNounPhrase(nt) && (_isSentence(nt) || /[。、，．]/.test(nt))) item.head = true;
       }
     }
   });
 
-  // 5) セクションに再構成
-  //    ※昇格した見出し同士・昇格見出しと元見出しは「統合しない」
-  //    （リスト項目を見出しに吸い込む事故を防ぐ）
+  // 4) セクションに再構成（昇格見出しは統合しない＝リスト吸い込み防止）
   const out = [];
   let cur = null;
   joined.forEach(item => {
