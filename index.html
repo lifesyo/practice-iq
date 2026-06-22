@@ -456,17 +456,21 @@ label.lbl .req{color:var(--acc);margin-left:3px}
   body{font-size:15.5px}
   .kv{grid-template-columns:repeat(4,1fr)}
   main{padding-top:22px}
-  /* 教科書一覧：iPad・Macでは2列で並べる */
-  #book-list{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
-  #book-list>.mcard,#book-list>.defcard,#book-list>.principle,#book-list>.pcard{margin-bottom:0}
-  #book-list>.h-eyebrow{grid-column:1 / -1}
-  #book-list>.empty{grid-column:1 / -1}
+  /* 教科書一覧：縦1列で表示（種類ごとに見出しで整理） */
+  #book-list{display:block}
+  #book-list>.h-eyebrow,#book-list>.empty{grid-column:auto}
   /* 検索結果の関連原則なども広めに */
   .plan-acts .btn{font-size:14px}
 }
 @media(min-width:1024px){
-  #book-list{grid-template-columns:1fr 1fr 1fr}
+  #book-list{max-width:860px;margin-left:auto;margin-right:auto}
 }
+/* 教科書：種類（カテゴリー）の見出し */
+.book-cat-head{font-size:13px;font-weight:900;letter-spacing:.04em;color:var(--acc);
+  margin:20px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.book-cat-head:first-child{margin-top:4px}
+.book-cat-head .cnt{font-size:11px;font-weight:700;color:var(--faint);background:var(--bg2);
+  border:1px solid var(--line);border-radius:10px;padding:1px 8px}
 </style>
 </head>
 <body>
@@ -633,7 +637,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.6.3';
+const APP_VER = '1.6.4';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -2282,24 +2286,44 @@ function renderBook(){
   const q = norm(BOOK.q);
   let html = '', n = 0;
 
+  // カテゴリーごとに見出しを付けて並べる（「すべて」表示かつ検索なしのとき）
+  function groupedHTML(list, cardFn){
+    const grouped = (BOOK.cat === 'all' && !q);
+    if (!grouped) return list.map(cardFn).join('');
+    const order = allCats();
+    const buckets = new Map();
+    list.forEach(it => {
+      const cs = catsOf(it);
+      const cat = (cs && cs.length ? cs[0] : 'その他');
+      if (!buckets.has(cat)) buckets.set(cat, []);
+      buckets.get(cat).push(it);
+    });
+    const cats = order.filter(c => buckets.has(c)).concat(
+      Array.from(buckets.keys()).filter(c => !order.includes(c)));
+    return cats.map(c =>
+      '<div class="book-cat-head">' + esc(c) + '<span class="cnt">' + buckets.get(c).length + '</span></div>'
+      + buckets.get(c).map(cardFn).join('')
+    ).join('');
+  }
+
   if (BOOK.mode === 'menus'){
     const list = sortByCat(Store.menus.filter(m =>
       (BOOK.cat === 'all' || catsOf(m).includes(BOOK.cat)) && (!q || matchMenu(m, q))));
     n = list.length;
-    html = list.map(mcardHTML).join('');
+    html = groupedHTML(list, mcardHTML);
   }
   else if (BOOK.mode === 'principles'){
-    const list = Store.principles.filter(p =>
-      (BOOK.cat === 'all' || catsOf(p).includes(BOOK.cat)) && (!q || matchPrin(p, q)));
+    const list = sortByCat(Store.principles.filter(p =>
+      (BOOK.cat === 'all' || catsOf(p).includes(BOOK.cat)) && (!q || matchPrin(p, q))));
     n = list.length;
-    html = list.map(principleCard).join('');
+    html = groupedHTML(list, principleCard);
   }
   else if (BOOK.mode === 'definitions'){
     const list = sortByCat(Store.definitions.filter(d =>
       (BOOK.cat === 'all' || catsOf(d).includes(BOOK.cat)) && (!q || matchDef(d, q))).map(d =>
         Object.assign({ name: d.term }, d)));   // sortByCat用にnameを付与
     n = list.length;
-    html = list.map(definitionCard).join('');
+    html = groupedHTML(list, definitionCard);
   }
   else {
     const ms = Store.menus.filter(m => Store.bookmarks.has(m.id) && (!q || matchMenu(m, q)));
@@ -3310,6 +3334,42 @@ function tidyNoteSections(sections){
   return out.filter(s => s.heading || s.points.length);
 }
 
+/* AI応答からJSON配列を取り出す。途中で切れていても完成済みの要素だけ救出する。 */
+function _parsePrincipleArray(res){
+  let s = String(res || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+  // 配列の開始位置
+  const start = s.indexOf('[');
+  if (start >= 0) s = s.slice(start);
+  // まずそのまま試す
+  try { const a = JSON.parse(s); if (Array.isArray(a)) return a; } catch (e) {}
+  // 末尾が切れている場合：完成した {...} を順に拾う
+  const objs = [];
+  let depth = 0, inStr = false, esc = false, buf = '';
+  for (let i = 0; i < s.length; i++){
+    const ch = s[i];
+    if (inStr){
+      buf += ch;
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"'){ inStr = true; buf += ch; continue; }
+    if (ch === '{'){ if (depth === 0) buf = ''; depth++; buf += ch; continue; }
+    if (ch === '}'){
+      depth--; buf += ch;
+      if (depth === 0){
+        try { objs.push(JSON.parse(buf)); } catch (e) {}
+        buf = '';
+      }
+      continue;
+    }
+    if (depth > 0) buf += ch;
+  }
+  if (objs.length) return objs;
+  throw new Error('AIの応答を解析できませんでした');
+}
+
 /* ノートから指導の原則・考え方をAIで抽出して「原則」に追加する */
 async function extractPrinciplesFromNote(id){
   const n = Store.note ? Store.note(id) : (Store.notes || []).find(x => x.id === id);
@@ -3332,10 +3392,8 @@ async function extractPrinciplesFromNote(id){
   const overlay = _showBusy('AIがノートから原則を抽出しています…');
   let arr = null;
   try {
-    const res = await callAI([{ role: 'user', content: usr }], sys, 1600);
-    const clean = String(res).replace(/```json/gi, '').replace(/```/g, '').trim();
-    const m = clean.match(/\[[\s\S]*\]/);
-    arr = JSON.parse(m ? m[0] : clean);
+    const res = await callAI([{ role: 'user', content: usr }], sys, 4000);
+    arr = _parsePrincipleArray(res);
   } catch (e){
     _hideBusy(overlay);
     alert('原則の抽出に失敗しました。\n' + (e && e.message ? e.message : ''));
