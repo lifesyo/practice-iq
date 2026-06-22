@@ -231,6 +231,9 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .yt .yt-s{font-size:11px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .yt-none{font-size:12.5px;color:var(--faint);padding:4px 2px}
 .board{display:flex;flex-direction:column;gap:8px}
+.board-item{margin-bottom:14px}
+.board-item:last-child{margin-bottom:0}
+.board-ttl{font-size:13px;font-weight:800;color:#7CE0CF;margin-bottom:7px;display:flex;align-items:center;gap:4px}
 .board-load{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;background:linear-gradient(135deg,#0d3b34,#0a2c28);border:1px solid #16574e;border-radius:12px;padding:18px 14px;color:#7CE0CF;font-size:14px;font-weight:800;cursor:pointer}
 .board-load:active{transform:scale(.99)}
 .board-load .board-ic{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#16574e;color:#fff;font-size:13px}
@@ -1497,25 +1500,72 @@ function boardEmbedInfo(url){
   return { url: url, id: id, embeddable: true };
 }
 
+/* メニュー/ノートの作戦板リストを正規化して返す。
+   新形式: item.boards = [{name, url}, ...]
+   旧形式: item.board = 'https://...'（文字列）も後方互換で吸収 */
+function getBoards(item){
+  if (!item) return [];
+  const out = [];
+  if (Array.isArray(item.boards)){
+    item.boards.forEach(b => {
+      if (!b) return;
+      if (typeof b === 'string'){ if (b.trim()) out.push({ name: '', url: b.trim() }); }
+      else if (b.url && String(b.url).trim()) out.push({ name: String(b.name || '').trim(), url: String(b.url).trim() });
+    });
+  }
+  if (item.board && String(item.board).trim()){      // 旧データ
+    out.push({ name: '', url: String(item.board).trim() });
+  }
+  return out;
+}
+
+/* フォーム表示用：作戦板リストを「名前 | URL」の複数行テキストに */
+function boardsToText(item){
+  return getBoards(item).map(b => b.name ? (b.name + ' | ' + b.url) : b.url).join('\n');
+}
+/* フォーム入力用：複数行テキストを作戦板リスト[{name,url}]に */
+function textToBoards(text){
+  return String(text || '').split(/\n+/).map(line => {
+    line = line.trim();
+    if (!line) return null;
+    const i = line.indexOf('|');
+    if (i >= 0){
+      const name = line.slice(0, i).trim();
+      const url = line.slice(i + 1).trim();
+      return url ? { name: name, url: url } : null;
+    }
+    return { name: '', url: line };
+  }).filter(Boolean);
+}
+
 let _boardSeq = 0;
-function boardHTML(m){
-  const info = boardEmbedInfo(m && m.board);
+function oneBoardHTML(b){
+  const info = boardEmbedInfo(b.url);
   if (!info) return '';
   const secId = 'board-' + (++_boardSeq);
-  const label = '<div class="sec"><div class="s-lbl">作戦板（Draw IQ）</div>';
+  const ttl = b.name ? esc(b.name) : '作戦板（Draw IQ）';
+  const head = '<div class="board-ttl">📋 ' + ttl + '</div>';
   if (!info.embeddable){
-    return label + '<a class="yt" href="' + esc(info.url) + '" target="_blank" rel="noopener">'
+    return '<div class="board-item">' + head
+      + '<a class="yt" href="' + esc(info.url) + '" target="_blank" rel="noopener">'
       + '<div class="yt-ph">▶</div><div><div class="yt-t">作戦板を開く ▶</div>'
       + '<div class="yt-s">' + esc(info.url) + '</div></div></a></div>';
   }
-  // タップで読み込む方式（一覧で複数iframeを一度に読み込まない）
-  return label
+  return '<div class="board-item">' + head
     + '<div class="board" id="' + secId + '">'
     +   '<button class="board-load" data-act="board-load" data-sec="' + secId + '" data-url="' + esc(info.url) + '">'
     +     '<span class="board-ic">▶</span><span>作戦板を再生（タップで読み込み）</span>'
     +   '</button>'
     +   '<a class="board-open" href="' + esc(info.url) + '" target="_blank" rel="noopener">別画面で開く ↗</a>'
     + '</div></div>';
+}
+function boardHTML(m){
+  const boards = getBoards(m);
+  if (!boards.length) return '';
+  const items = boards.map(oneBoardHTML).filter(Boolean);
+  if (!items.length) return '';
+  return '<div class="sec"><div class="s-lbl">作戦板（Draw IQ）' + (items.length > 1 ? '（' + items.length + '件）' : '') + '</div>'
+    + items.join('') + '</div>';
 }
 function boardLoad(secId, url){
   const box = document.getElementById(secId);
@@ -2443,7 +2493,8 @@ function openMenuForm(id){
     + fld('よくあるミス（1行に1つ）', '<textarea id="f-mistakes" class="field" rows="3">' + esc((m.mistakes || []).join('\n')) + '</textarea>')
     + fld('検索キーワード（スペース区切り）', '<input id="f-kw" class="field" value="' + esc((m.kw || []).join(' ')) + '" placeholder="例：判断 速攻 アウトナンバー">')
     + fld('参考動画URL（任意・1行に1つ／複数可）', '<textarea id="f-vids" class="field" rows="3" placeholder="https://youtu.be/xxxx&#10;https://www.youtube.com/watch?v=yyyy" style="font-size:12.5px">' + esc(getVids(m).join('\n')) + '</textarea>')
-    + fld('作戦板リンク（Draw IQの共有URL・任意）', '<input id="f-board" class="field" type="url" value="' + esc(m.board || '') + '" placeholder="https://draw-iq-iota.vercel.app/?embed=...">')
+    + fld('作戦板リンク（Draw IQの共有URL・複数可）<br><span style="font-size:11px;color:var(--faint)">1行に1つ。「名前 | URL」の形で名前を付けられます（名前は省略可）</span>',
+        '<textarea id="f-board" class="field" rows="3" placeholder="ピック&ロール | https://draw-iq-iota.vercel.app/?embed=xxxx&#10;ゾーン攻め | https://draw-iq-iota.vercel.app/?embed=yyyy" style="font-size:12px">' + esc(boardsToText(m)) + '</textarea>')
     + '<button class="btn btn-acc btn-block" data-act="save-menu">保存する</button>';
 
   openModal(id ? '練習メニューを編集' : '練習メニューを追加', h);
@@ -2478,7 +2529,7 @@ function saveMenu(){
     desc,
     kw: $('#f-kw').value.split(/[、,\s　]+/).map(s => s.trim()).filter(Boolean),
     vids: ($('#f-vids').value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean),
-    board: ($('#f-board').value || '').trim()
+    boards: textToBoards($('#f-board').value)
   };
   if (m.maxP < m.minP) m.maxP = m.minP;
 
@@ -2860,7 +2911,8 @@ function normalizeMenu(o){
     desc: String(o.desc || o.description || o.練習説明 || o.実施方法 || o.method || '').trim(),
     kw: _kw(o.kw || o.keywords || o.キーワード || o.tags),
     vids: _arr(o.vids || o.videos || o.動画 || o.参考動画 || o.urls || o.youtube || o.YouTube || o.url || o.yt),
-    board: String(o.board || o.作戦板 || o.diagram || '').trim()
+    boards: Array.isArray(o.boards) ? o.boards
+            : ((o.board || o.作戦板 || o.diagram) ? [{ name: '', url: String(o.board || o.作戦板 || o.diagram).trim() }] : [])
   };
 }
 
@@ -3146,7 +3198,8 @@ function normalizeNote(o){
     cats: cats,
     cat: cats[0] || '',
     kw: kw,
-    board: String(o.board || '').trim(),
+    boards: Array.isArray(o.boards) ? o.boards
+            : (o.board ? [{ name: '', url: String(o.board).trim() }] : []),
     createdAt: o.createdAt || new Date().toISOString()
   };
 }
@@ -3498,7 +3551,8 @@ function editNote(id){
     + fld('カテゴリー（複数選択可）', catOpts)
     + fld('内容（「# 見出し」で項目、「- 」で箇条書き）',
         '<textarea id="f-nbody" class="field" rows="12" style="font-size:14px;line-height:1.7">' + esc(noteToEditText(n)) + '</textarea>')
-    + fld('作戦板リンク（Draw IQの共有URL・任意）', '<input id="f-nboard" class="field" type="url" value="' + esc(n.board || '') + '" placeholder="https://draw-iq-iota.vercel.app/?embed=...">')
+    + fld('作戦板リンク（Draw IQの共有URL・複数可）<br><span style="font-size:11px;color:var(--faint)">1行に1つ。「名前 | URL」の形で名前を付けられます（名前は省略可）</span>',
+        '<textarea id="f-nboard" class="field" rows="3" placeholder="ピック&ロール | https://draw-iq-iota.vercel.app/?embed=xxxx&#10;ゾーン攻め | https://draw-iq-iota.vercel.app/?embed=yyyy" style="font-size:12px">' + esc(boardsToText(n)) + '</textarea>')
     + '<div style="display:flex;gap:8px;margin-top:6px">'
     +   '<button class="btn btn-acc" data-act="note-edit-save">保存</button>'
     +   '<button class="btn btn-ghost" data-act="modal-close">キャンセル</button>'
@@ -3517,7 +3571,7 @@ function saveNoteEdit(){
     id: n.id, title: title, source: n.source, raw: n.raw,
     sections: sections.length ? sections : n.sections,
     cats: cats.length ? cats : catsOf(n),
-    kw: n.kw, board: ($('#f-nboard').value || '').trim(), createdAt: n.createdAt
+    kw: n.kw, boards: textToBoards($('#f-nboard').value), createdAt: n.createdAt
   });
   Store.notes = Store.upsert(Store.notes, [updated]);
   Store.save();
