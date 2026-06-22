@@ -2400,6 +2400,10 @@ function renderAdmin(){
       + '<div class="hint">登録済みのすべての練習メニューを、名前・目的・説明・キーワードの内容から判定し直して、ふさわしいカテゴリーに修正します。実行前に変更内容を確認できます。手動で直した正しい分類は、判定が一致すればそのまま残ります。</div>'
       + '<button class="btn btn-block" data-act="adm-reclassify" style="margin-top:12px">🏷 カテゴリーを自動で修正する</button></div>'
 
+      + '<div class="card"><label class="lbl">ノートを見やすく整える</label>'
+      + '<div class="hint">登録済みのすべての指導ノートの<b>見出しと箇条書き</b>を整え直します。バラバラに分断された文をつなぎ、区切り線を取り除き、見出しになるべき項目を見出しに直します。実行前に対象ノートを確認できます。</div>'
+      + '<button class="btn btn-block" data-act="adm-tidy-notes" style="margin-top:12px">🗒️ ノートを自動で整える</button></div>'
+
       + '<div class="card"><label class="lbl">バックアップ</label>'
       + '<div class="hint">念のためのバックアップとして、全データを data.json ファイルに書き出し／読み込みできます。読み込んだ内容もクラウドへ同期されます。</div>'
       + '<input type="file" id="imp-file" accept=".json,application/json" style="display:none">'
@@ -3124,10 +3128,188 @@ function reclassifyMenus(){
 }
 
 /* ============================================================
-   AI（Gemini API proxy 経由） — 指導ノート要約 ＆ 相談チャット
-   サーバーレス関数 /api/ai が {messages, system, max_tokens} を受け取り
-   {text} を返す。混雑時は /api/ai 側でも再試行する。
+   指導ノートの見やすさを整える（見出し⇔箇条書きの崩れを自動修正）
+   実際の崩れ：①1つの文が複数の箇条書きに分断 ②区切り線「———」が項目化
+   ③見出しになるべき短い語が箇条書き化、を直す。
    ============================================================ */
+
+/* 装飾記号・余分な空白を除去した素のテキスト */
+function _cleanLine(s){
+  return String(s || '')
+    .replace(/\*\*/g, '')
+    .replace(/^[\s#■●▶◆◎○・*•▪◦]+/, '')
+    .replace(/[【】]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/* 区切り線だけの行か（——— ─── --- === 等） */
+function _isDivider(t){
+  const s = String(t || '').trim();
+  return s.length > 0 && /^[\-–—―ー─━=＝_．.・\s]+$/.test(s) && /[-–—―ー─━=＝_]/.test(s);
+}
+
+/* この行は「文の途中で終わっている」か（次の行に続く） */
+function _endsOpen(t){
+  const s = String(t || '').trim();
+  if (!s) return false;
+  if (/[、，「（(]$/.test(s)) return true;                 // 読点・開き括弧で終わる
+  // 接続・連体で終わる（次に続く）
+  if (/(とは|とは、|は|が|で|や|から|ので|ため|つまり|または|かつ|なお|ただし|逆に|そして|したがって)$/.test(s)) return true;
+  return false;
+}
+
+/* この行は「前の文の続き（文末側）」か */
+function _isTail(t){
+  const s = String(t || '').trim();
+  if (!s) return false;
+  // 助詞・指示で始まる（前に繋がる）
+  if (/^[をがはにへとでもの、，]/.test(s)) return true;
+  // 「〜である。」「〜のことである。」「〜を指す。」など、文末だけの短い行
+  if (/^(の?ことである|である|を指す|を行う|ためである|と言える|になる|となる|に集約される)[。\.]?$/.test(s)) return true;
+  return false;
+}
+
+/* 句点・体言止め含め「文として完結」しているか（見出し判定の補助） */
+function _isSentence(t){
+  const s = String(t || '').trim();
+  if (/[。．！？]$/.test(s)) return true;                  // 句点で終わる
+  if (/(です|ます|である|だった|します|くらい|やすい|にくい|ている|ない)$/.test(s)) return true;
+  if (s.length > 24 && /[、，]/.test(s)) return true;      // 長くて読点を含む
+  return false;
+}
+
+/* 短い名詞句＝見出しらしい（文ではなく、適度に短い） */
+function _looksLikeHeading(text){
+  const t = String(text || '').replace(/[：:]\s*$/, '').trim();
+  if (!t) return false;
+  if (_isSentence(t)) return false;
+  if (/[。、，．！？]$/.test(t)) return false;
+  if (/[：:]$/.test(String(text).trim()) && t.length <= 28) return true;  // コロン終わりの短い行
+  if (t.length <= 16 && !/[。、，．]/.test(t)) return true;                // 短い名詞句
+  return false;
+}
+
+/* 「定義」「例」「まとめ」など、単独で見出しになりやすい既知の語 */
+function _isStructuralWord(t){
+  const s = String(t || '').replace(/[：:]\s*$/, '').trim();
+  return /^(定義|例|まとめ|ポイント|目的|理由|手順|注意点|概要|背景|結論|補足|種類|分類)$/.test(s)
+    || /の(例|定義|目的|種類|ポイント|手順|まとめ)$/.test(s);
+}
+
+/* セクション配列を整える */
+function tidyNoteSections(sections){
+  // 1) フラットな行列に展開（見出しマーカー付き）
+  const flat = [];
+  (sections || []).forEach(sec => {
+    const h = _cleanLine(sec.heading);
+    if (h) flat.push({ head: true, text: h, orig: true });
+    const pts = Array.isArray(sec.points) ? sec.points : (sec.summary ? [sec.summary] : []);
+    pts.forEach(p => { const c = _cleanLine(p); if (c) flat.push({ head: false, text: c, orig: false }); });
+  });
+
+  // 2) 区切り線を除去し、「直後の行」に印（見出し化の有力な手がかり）
+  const noDiv = [];
+  let dividerPending = false;
+  flat.forEach(item => {
+    if (!item.head && _isDivider(item.text)){ dividerPending = true; return; }
+    item.afterDivider = dividerPending;
+    dividerPending = false;
+    noDiv.push(item);
+  });
+
+  // 3) 分断された文を結合（見出しでない隣接行のみ）
+  const joined = [];
+  noDiv.forEach(item => {
+    const prev = joined.length ? joined[joined.length - 1] : null;
+    if (!item.head && prev && !prev.head && !item.afterDivider){
+      if (_endsOpen(prev.text) || _isTail(item.text)){
+        prev.text = (prev.text + item.text).replace(/\s+/g, ' ').trim();
+        return;
+      }
+    }
+    joined.push(Object.assign({}, item));
+  });
+
+  // 4) 見出し⇔箇条書きの再判定（昇格は慎重に）
+  joined.forEach(item => {
+    if (item.head){
+      // 元から見出しでも、文章っぽければ箇条書きに降格
+      if (item.text.length > 30 && /[。、，．]/.test(item.text)) item.head = false;
+    } else {
+      // 昇格は「強い手がかり」がある時だけ：
+      //  ・区切り線の直後の短い行
+      //  ・「定義」「例」などの構造語
+      //  ・コロンで終わる短い行
+      const t = item.text;
+      const colonHead = /[：:]$/.test(t) && t.replace(/[：:]\s*$/, '').length <= 28;
+      // 区切り線の直後は強い手がかり：文でなく適度な長さなら見出しに
+      const afterDivHead = item.afterDivider && !_isSentence(t) && !/[。、，．]$/.test(t) && t.length <= 30;
+      if (afterDivHead || _isStructuralWord(t) || colonHead || (item.afterDivider && _looksLikeHeading(t))){
+        item.head = true;
+        item.promoted = true;
+      }
+    }
+  });
+
+  // 5) セクションに再構成
+  //    ※昇格した見出し同士・昇格見出しと元見出しは「統合しない」
+  //    （リスト項目を見出しに吸い込む事故を防ぐ）
+  const out = [];
+  let cur = null;
+  joined.forEach(item => {
+    if (item.head){
+      cur = { heading: item.text.replace(/[：:]\s*$/, '').trim(), points: [] };
+      out.push(cur);
+    } else {
+      if (!cur){ cur = { heading: '', points: [] }; out.push(cur); }
+      cur.points.push(item.text);
+    }
+  });
+
+  return out.filter(s => s.heading || s.points.length);
+}
+
+/* 整形の前後で実質的に変化があるか（見出し/箇条書きの構造比較） */
+function _sectionsSignature(secs){
+  return (secs || []).map(s =>
+    (s.heading ? 'H:' + s.heading : '') + '|' +
+    (Array.isArray(s.points) ? s.points.join('¶') : '')
+  ).join('§');
+}
+
+function tidyAllNotes(){
+  const list = Store.notes || [];
+  if (!list.length){ toast('ノートがありません'); return; }
+
+  const changed = [];
+  const updated = list.map(n => {
+    const before = _sectionsSignature(n.sections);
+    const tidied = tidyNoteSections(n.sections);
+    const after = _sectionsSignature(tidied);
+    if (after !== before && (tidied.length || !n.sections)){
+      changed.push(n.title || '（無題）');
+      const summary = tidied.map(s => (s.heading ? s.heading + '：' : '') + s.points.join(' / ')).join('\n');
+      return Object.assign({}, n, { sections: tidied, summary: summary });
+    }
+    return n;
+  });
+
+  if (!changed.length){ toast('整える必要のあるノートはありませんでした'); return; }
+
+  const preview = changed.slice(0, 12).map(t => '・' + t).join('\n');
+  const more = changed.length > 12 ? ('\n…ほか ' + (changed.length - 12) + ' 件') : '';
+  if (!confirm(changed.length + ' 件のノートを見やすく整えます。\n\n【対象ノート】\n' + preview + more
+      + '\n\n・分断された文をつなぎ、区切り線を除き、見出しを整えます。\n・元に戻すには、念のため事前に「data.json を書き出す」でバックアップしておくと安心です。\n\nこの内容で実行しますか？')) return;
+
+  Store.notes = updated;
+  Store.save();
+  Sync.push();
+  toast(changed.length + ' 件のノートを整えました');
+  if (typeof renderAdmin === 'function') renderAdmin();
+}
+
+
 async function callAI(messages, system, maxTokens){
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   let lastErr = null;
@@ -3835,6 +4017,7 @@ function bindEvents(){
       case 'google-logout': Sync.logout(); break;
       case 'adm-reset':     resetAll(); break;
       case 'adm-reclassify': reclassifyMenus(); break;
+      case 'adm-tidy-notes': tidyAllNotes(); break;
       case 'note-summarize': summarizeNote(); break;
       case 'note-manual':    manualNote(); break;
       case 'note-pick-file': { const fi = $('#note-file'); if (fi) fi.click(); } break;
