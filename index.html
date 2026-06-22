@@ -644,7 +644,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.6.6';
+const APP_VER = '1.6.7';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -3801,9 +3801,12 @@ async function summarizeNote(){
   const sys = 'あなたはバスケットボール指導の知識整理アシスタントです。コーチが相談で得た回答や、撮影した資料（画像・PDF）を、指導ノートとして要約します。'
     + '認知→判断→選択→実行という構造的・思考的バスケの指導観に沿ってまとめてください。'
     + '内容に複数の話題（トピック）が含まれる場合は、話題ごとに「見出し＋要点の箇条書き」に分けてください。話題が1つだけなら1セクションで構いません。'
-    + '各セクションの points は、要点を短い箇条書き（1項目1文・体言止めや簡潔な文。3〜6項目程度）にしてください。重要な内容は落とさないこと。'
+    + '【見出しの付け方】システム名・戦術名・専門用語が見出しになる場合は、英語名を（）で添える（例：ドロップ（Drop）、セパレーション（Separation））。'
+    + 'その配下に説明をまとめるときは、各セクションの heading を「特徴」「強み」「弱み」「指導ポイント」「概要」「具体例」「攻撃の考え方」などの短い小見出しにして、関連する話題ごとに分けてください。'
+    + '各セクションの points は、要点を短い箇条書き（1項目1文・体言止めや簡潔な文。3〜6項目程度）にしてください。1つの文を複数の項目に分割しないこと。重要な内容は落とさないこと。'
+    + '区切り線（―など）や矢印（→↓）は使わないこと。'
     + '出力は必ず次のJSONのみ（前後に説明やコードフェンス無し）：'
-    + '{"title":"全体の短い見出し","sections":[{"heading":"話題の見出し","points":["要点1","要点2"]}],"cats":["関連カテゴリー"],"kw":["検索キーワード"]}。'
+    + '{"title":"全体の短い見出し","sections":[{"heading":"見出し","points":["要点1","要点2"]}],"cats":["関連カテゴリー"],"kw":["検索キーワード"]}。'
     + 'cats は次から該当するものを選ぶ（複数可・無理に付けない）：' + allCats().join('、') + '。';
 
   // content を組み立て（テキスト＋画像/PDF）
@@ -3820,7 +3823,7 @@ async function summarizeNote(){
     if (s >= 0 && e >= 0) clean = clean.slice(s, e + 1);
     const obj = JSON.parse(clean);
     obj.raw = raw; obj.source = src;
-    _notePreview = normalizeNote(obj);
+    _notePreview = _autoStructureNote(normalizeNote(obj));
     box.innerHTML = notePreviewHTML(_notePreview);
   } catch (err) {
     box.innerHTML = '<div class="hint" style="color:var(--acc)">要約に失敗しました：' + esc(err.message)
@@ -3857,8 +3860,26 @@ function manualNote(){
   const allText = sections.map(s => s.heading + ' ' + s.points.join(' ')).join(' ');
   const cats = _classifyCats('', [title, allText]);
 
-  _notePreview = normalizeNote({ title: title, source: src, raw: raw, sections: sections, cats: cats });
+  _notePreview = _autoStructureNote(normalizeNote({ title: title, source: src, raw: raw, sections: sections, cats: cats }));
   $('#note-preview').innerHTML = notePreviewHTML(_notePreview);
+}
+
+/* ノートを自動で見やすく整える：分断文の結合・区切り線除去 → 2階層化 */
+function _autoStructureNote(n){
+  if (!n || !Array.isArray(n.sections)) return n;
+  try {
+    const tidied = tidyNoteSections(n.sections);   // 文の結合・記号除去・①②分割など
+    const two = restructureToTwoLevel(tidied);      // 大見出し→小見出し→箇条書き
+    if (two && two.length){
+      n.sections = two;
+      n.summary = two.map(s => {
+        const head = s.heading ? s.heading + '：' : '';
+        const body = (s.groups || []).map(g => (g.label ? g.label + ' ' : '') + (g.points || []).join(' / ')).join(' / ');
+        return head + (body || (s.points || []).join(' / '));
+      }).join('\n');
+    }
+  } catch (e){ /* 失敗時は元のまま */ }
+  return n;
 }
 
 /* テキストを見出し＋箇条書きのセクション配列に変換（ローカル処理） */
