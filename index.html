@@ -240,6 +240,13 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .board-open{font-size:11.5px;color:var(--sub);text-decoration:none;align-self:flex-end}
 .board-frame{position:relative;width:100%;aspect-ratio:3/4;max-height:560px;background:#0a0e14;border:1px solid var(--line);border-radius:12px;overflow:hidden}
 @media(min-width:700px){.board-frame{aspect-ratio:4/3}}
+/* 資料（PDF）リンク */
+.pdf-link{display:flex;align-items:center;gap:12px;width:100%;background:linear-gradient(135deg,#3a1410,#2c0f0a);border:1px solid #5a2419;border-radius:12px;padding:14px 14px;color:#FF8A6B;text-decoration:none}
+.pdf-link:active{transform:scale(.99)}
+.pdf-link .pdf-ic{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;background:#5a2419;font-size:17px;flex:0 0 auto}
+.pdf-link .pdf-tt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pdf-link .pdf-name{font-size:14px;font-weight:800;color:#FF8A6B}
+.pdf-link .pdf-url{font-size:10.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .r-foot{display:flex;gap:8px;padding:0 16px 14px}
 .star{font-size:18px;line-height:1;filter:grayscale(1) opacity(.4);transition:filter .15s,transform .1s}
 .star.on{filter:none}
@@ -644,7 +651,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.6.7';
+const APP_VER = '1.6.8';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -1591,6 +1598,63 @@ function boardLoad(secId, url){
     + '<a class="board-open" href="' + esc(url) + '" target="_blank" rel="noopener">別画面で開く ↗</a>';
 }
 
+/* ===== 資料（PDF）リンク ===== 
+   メニュー/ノートの pdfs = [{name, url}] として保存。
+   端末内ではなく iCloud / Google Drive 等の共有URLを貼る想定。 */
+function pdfInfo(url){
+  url = String(url || '').trim();
+  if (!url) return null;
+  let u;
+  try { u = new URL(url); } catch (e) { return null; }
+  if (!/^https?:$/.test(u.protocol)) return null;   // http(s)のみ
+  return { url: url };
+}
+function getPdfs(item){
+  if (!item) return [];
+  const out = [];
+  if (Array.isArray(item.pdfs)){
+    item.pdfs.forEach(p => {
+      if (!p) return;
+      if (typeof p === 'string'){ if (p.trim()) out.push({ name: '', url: p.trim() }); }
+      else if (p.url && String(p.url).trim()) out.push({ name: String(p.name || '').trim(), url: String(p.url).trim() });
+    });
+  }
+  return out;
+}
+function pdfsToText(item){
+  return getPdfs(item).map(p => p.name ? (p.name + ' ' + p.url) : p.url).join('\n');
+}
+function textToPdfs(text){
+  return String(text || '').split(/\n+/).map(line => {
+    line = line.trim();
+    if (!line) return null;
+    const m = line.match(/https?:\/\/\S+/);
+    if (m){
+      return { name: line.slice(0, m.index).trim(), url: m[0] };
+    }
+    return { name: '', url: line };
+  }).filter(Boolean);
+}
+function onePdfHTML(p){
+  const info = pdfInfo(p.url);
+  if (!info) return '';
+  const ttl = p.name ? esc(p.name) : '資料（PDF）';
+  return '<div class="board-item">'
+    + '<a class="pdf-link" href="' + esc(info.url) + '" target="_blank" rel="noopener">'
+    +   '<span class="pdf-ic">📄</span>'
+    +   '<span class="pdf-tt"><span class="pdf-name">' + ttl + ' を開く ↗</span>'
+    +   '<span class="pdf-url">' + esc(info.url) + '</span></span>'
+    + '</a></div>';
+}
+function pdfHTML(item){
+  const pdfs = getPdfs(item);
+  if (!pdfs.length) return '';
+  const items = pdfs.map(onePdfHTML).filter(Boolean);
+  if (!items.length) return '';
+  return '<div class="sec"><div class="s-lbl">資料（PDF）' + (items.length > 1 ? '（' + items.length + '件）' : '') + '</div>'
+    + items.join('') + '</div>';
+}
+
 /* AI回答フォーマット（練習名→目的→必要人数→所要時間→実施方法→指導ポイント→注意点→参考動画） */
 function resultCard(m, num, opts){
   opts = opts || {};
@@ -1621,6 +1685,7 @@ function resultCard(m, num, opts){
     h += '<div class="sec warn"><div class="s-lbl">注意点（よくあるミス）</div>' + liList(m.mistakes) + '</div>';
   h += '<div class="sec"><div class="s-lbl">参考動画</div>' + ytHTML(m) + '</div>';
   h += boardHTML(m);
+  h += pdfHTML(m);
   h += '</div>';
 
   if (!opts.noFoot){
@@ -2534,6 +2599,8 @@ function openMenuForm(id){
     + fld('参考動画URL（任意・1行に1つ／複数可）', '<textarea id="f-vids" class="field" rows="3" placeholder="https://youtu.be/xxxx&#10;https://www.youtube.com/watch?v=yyyy" style="font-size:12.5px">' + esc(getVids(m).join('\n')) + '</textarea>')
     + fld('作戦板リンク（Draw IQの共有URL・複数可）<br><span style="font-size:11px;color:var(--faint)">1行に1つ。「名前 半角スペース URL」の形で名前を付けられます（名前は省略可）</span>',
         '<textarea id="f-board" class="field" rows="3" placeholder="ピック&ロール https://draw-iq-iota.vercel.app/?embed=xxxx&#10;ゾーン攻め https://draw-iq-iota.vercel.app/?embed=yyyy" style="font-size:12px">' + esc(boardsToText(m)) + '</textarea>')
+    + fld('資料（PDF）リンク（iCloud / Google Drive等の共有URL・複数可）<br><span style="font-size:11px;color:var(--faint)">1行に1つ。「名前 半角スペース URL」の形。端末内のPDFは共有リンクにしてから貼ってください</span>',
+        '<textarea id="f-pdf" class="field" rows="3" placeholder="ハーフコートオフェンス資料 https://drive.google.com/...&#10;ゾーン攻略メモ https://www.icloud.com/..." style="font-size:12px">' + esc(pdfsToText(m)) + '</textarea>')
     + '<button class="btn btn-acc btn-block" data-act="save-menu">保存する</button>';
 
   openModal(id ? '練習メニューを編集' : '練習メニューを追加', h);
@@ -2568,7 +2635,8 @@ function saveMenu(){
     desc,
     kw: $('#f-kw').value.split(/[、,\s　]+/).map(s => s.trim()).filter(Boolean),
     vids: ($('#f-vids').value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean),
-    boards: textToBoards($('#f-board').value)
+    boards: textToBoards($('#f-board').value),
+    pdfs: textToPdfs($('#f-pdf').value)
   };
   if (m.maxP < m.minP) m.maxP = m.minP;
 
@@ -2951,7 +3019,9 @@ function normalizeMenu(o){
     kw: _kw(o.kw || o.keywords || o.キーワード || o.tags),
     vids: _arr(o.vids || o.videos || o.動画 || o.参考動画 || o.urls || o.youtube || o.YouTube || o.url || o.yt),
     boards: Array.isArray(o.boards) ? o.boards
-            : ((o.board || o.作戦板 || o.diagram) ? [{ name: '', url: String(o.board || o.作戦板 || o.diagram).trim() }] : [])
+            : ((o.board || o.作戦板 || o.diagram) ? [{ name: '', url: String(o.board || o.作戦板 || o.diagram).trim() }] : []),
+    pdfs: Array.isArray(o.pdfs) ? o.pdfs
+            : ((o.pdf || o.資料 || o.PDF) ? [{ name: '', url: String(o.pdf || o.資料 || o.PDF).trim() }] : [])
   };
 }
 
@@ -3693,6 +3763,8 @@ function normalizeNote(o){
     kw: kw,
     boards: Array.isArray(o.boards) ? o.boards
             : (o.board ? [{ name: '', url: String(o.board).trim() }] : []),
+    pdfs: Array.isArray(o.pdfs) ? o.pdfs
+            : (o.pdf ? [{ name: '', url: String(o.pdf).trim() }] : []),
     createdAt: o.createdAt || new Date().toISOString()
   };
 }
@@ -4028,6 +4100,7 @@ function noteCard(n){
     +   (n.source ? '<div class="nc-src">出典：' + esc(n.source) + '</div>' : '')
     +   noteSectionsHTML(n)
     +   boardHTML(n)
+    +   pdfHTML(n)
     +   '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
     +     '<button class="btn btn-acc btn-sm" data-act="plan-add" data-kind="note" data-id="' + esc(n.id) + '">＋計画に追加</button>'
     +     '<button class="btn btn-ghost btn-sm" data-act="note-restructure" data-id="' + esc(n.id) + '">🏗️ 階層を整える</button>'
@@ -4112,6 +4185,8 @@ function editNote(id){
         '<textarea id="f-nbody" class="field" rows="12" style="font-size:14px;line-height:1.7">' + esc(noteToEditText(n)) + '</textarea>')
     + fld('作戦板リンク（Draw IQの共有URL・複数可）<br><span style="font-size:11px;color:var(--faint)">1行に1つ。「名前 半角スペース URL」の形で名前を付けられます（名前は省略可）</span>',
         '<textarea id="f-nboard" class="field" rows="3" placeholder="ピック&ロール https://draw-iq-iota.vercel.app/?embed=xxxx&#10;ゾーン攻め https://draw-iq-iota.vercel.app/?embed=yyyy" style="font-size:12px">' + esc(boardsToText(n)) + '</textarea>')
+    + fld('資料（PDF）リンク（iCloud / Google Drive等の共有URL・複数可）<br><span style="font-size:11px;color:var(--faint)">1行に1つ。「名前 半角スペース URL」の形。端末内のPDFは共有リンクにしてから貼ってください</span>',
+        '<textarea id="f-npdf" class="field" rows="3" placeholder="戦術メモ https://drive.google.com/...&#10;練習計画 https://www.icloud.com/..." style="font-size:12px">' + esc(pdfsToText(n)) + '</textarea>')
     + '<div style="display:flex;gap:8px;margin-top:6px">'
     +   '<button class="btn btn-acc" data-act="note-edit-save">保存</button>'
     +   '<button class="btn btn-ghost" data-act="modal-close">キャンセル</button>'
@@ -4130,7 +4205,7 @@ function saveNoteEdit(){
     id: n.id, title: title, source: n.source, raw: n.raw,
     sections: sections.length ? sections : n.sections,
     cats: cats.length ? cats : catsOf(n),
-    kw: n.kw, boards: textToBoards($('#f-nboard').value), createdAt: n.createdAt
+    kw: n.kw, boards: textToBoards($('#f-nboard').value), pdfs: textToPdfs($('#f-npdf').value), createdAt: n.createdAt
   });
   Store.notes = Store.upsert(Store.notes, [updated]);
   Store.save();
