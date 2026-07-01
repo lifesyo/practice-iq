@@ -651,7 +651,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.6.8';
+const APP_VER = '1.6.9';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -2493,6 +2493,14 @@ function renderAdmin(){
       + '<button class="btn btn-acc btn-block" data-act="ai-preview" style="margin-top:10px">内容を確認する</button>'
       + '<div id="ai-preview" style="margin-top:12px"></div></div>'
 
+      + '<div class="card"><label class="lbl">指導ノートを取り込む</label>'
+      + '<div class="hint">指導ノート（戦術・システムの整理）だけを取り込む専用の欄です。ここに入れたものは必ず<b>ノート</b>に保存されます。<b>JSON</b>でも、下記のような<b>階層テキスト</b>でもそのまま貼り付けできます。</div>'
+      + '<div class="hint" style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-top:7px;white-space:pre-wrap;font-size:11.5px;line-height:1.7">ドロップ（Drop）\n特徴\n・ビッグマンが下がってリング周辺を守る守備である。\n強み\n・ハンドラーのペネトレーションに強い。\n弱み\n・Pull-up Jump Shotに弱い。</div>'
+      + '<div class="hint" style="margin-top:7px">大見出しには英語名を（）で付ける／小見出しは <b>特徴・強み・弱み・指導ポイント</b>／箇条書きは「・」で始める。複数のシステムを続けて貼り付ければ、それぞれ別のノートになります。</div>'
+      + '<textarea id="note-json" class="field" rows="6" placeholder=\'ここに階層テキスト、またはJSONを貼り付け（例：{"notes":[...]} ／ ドロップ（Drop） 特徴 ・…）\' style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px"></textarea>'
+      + '<button class="btn btn-acc btn-block" data-act="note-json-preview" style="margin-top:10px">内容を確認する</button>'
+      + '<div id="note-json-preview" style="margin-top:12px"></div></div>'
+
       + '<div class="card"><label class="lbl">カテゴリーを一括で見直す</label>'
       + '<div class="hint">登録済みのすべての練習メニューを、名前・目的・説明・キーワードの内容から判定し直して、ふさわしいカテゴリーに修正します。実行前に変更内容を確認できます。手動で直した正しい分類は、判定が一致すればそのまま残ります。</div>'
       + '<button class="btn btn-block" data-act="adm-reclassify" style="margin-top:12px">🏷 カテゴリーを自動で修正する</button></div>'
@@ -3173,6 +3181,172 @@ function aiClear(){
   AI_STAGE = [];
   $('#ai-json').value = '';
   const box = $('#ai-preview');
+  if (box) box.innerHTML = '';
+}
+
+/* ============================================================
+   指導ノート専用の取り込み（管理画面）
+   - JSON（{notes:[...]} / {sections:[...]} 単体 / 配列）でもOK
+   - 階層テキスト（大見出し（English）→特徴/強み/弱み/指導ポイント→・）でもOK
+   - 何が来ても必ずノートとして取り込む
+   ============================================================ */
+let NOTE_STAGE = [];
+
+/* 階層テキストを「システムごと」に分割してノート配列にする。
+   大見出し＝（）に英語名を含む行、または小見出し・箇条書きのどれでもない見出し行を境界にする。 */
+const _NOTE_SUBHEADS = ['特徴', '強み', '弱み', '指導ポイント', '狙い', '目的', '対応', '注意点', 'キーポイント'];
+
+function _isNoteBullet(line){ return /^[・\-•*]/.test(line) || /^[①-⑳]/.test(line) || /^[0-9]+[\.\)]/.test(line); }
+function _isNoteSubhead(line){ return _NOTE_SUBHEADS.includes(line.trim()); }
+function _isNoteMajor(line){
+  const t = line.trim();
+  if (!t) return false;
+  if (_isNoteBullet(t) || _isNoteSubhead(t)) return false;
+  // 英語名（）を含む見出しは大見出し確定
+  if (/[（(][\sA-Za-z0-9&\/'+\-.]+[）)]/.test(t)) return true;
+  // 短め（24字以内）で句点なし＝見出しとみなす
+  if (t.length <= 24 && !/[。、．]/.test(t)) return true;
+  return false;
+}
+
+/* 階層テキスト → [{title, sections:[{heading, points|groups}]}...] */
+function parseNoteText(text){
+  const lines = String(text || '').replace(/\r/g, '').split('\n').map(l => l.trim());
+  const notes = [];
+  let cur = null;    // {title, sections:[]}
+  let curSub = null; // {label, points:[]}
+
+  const pushSub = () => {
+    if (cur && curSub && (curSub.label || curSub.points.length)){
+      if (!cur._groups) cur._groups = [];
+      cur._groups.push(curSub);
+    }
+    curSub = null;
+  };
+  const pushNote = () => {
+    pushSub();
+    if (cur){
+      // _groups を sections 形式へ。大見出しを1セクションとして、小見出しを groups にする
+      const groups = (cur._groups || []).filter(g => g.label || g.points.length);
+      const sec = { heading: '', points: [], groups: groups };
+      cur.sections = [sec];
+      delete cur._groups;
+      notes.push(cur);
+    }
+    cur = null;
+  };
+
+  for (const line of lines){
+    if (!line) continue;
+    if (_isNoteMajor(line)){
+      pushNote();
+      cur = { title: line, sections: [] };
+      curSub = null;
+      continue;
+    }
+    if (!cur){ cur = { title: '指導ノート', sections: [] }; }
+    if (_isNoteSubhead(line)){
+      pushSub();
+      curSub = { label: line, points: [] };
+      continue;
+    }
+    if (_isNoteBullet(line)){
+      const txt = line.replace(/^[・\-•*]\s*/, '').replace(/^[①-⑳]\s*/, '').replace(/^[0-9]+[\.\)]\s*/, '').trim();
+      if (!txt) continue;
+      if (!curSub){ curSub = { label: '', points: [] }; }
+      curSub.points.push(txt);
+      continue;
+    }
+    // 見出しでも箇条書きでもない普通の文 → 直近グループの点として追加
+    if (!curSub){ curSub = { label: '', points: [] }; }
+    curSub.points.push(line);
+  }
+  pushNote();
+  return notes;
+}
+
+/* JSON or テキストを判定して、必ずノート配列を返す */
+function parseNoteInput(text){
+  const t = String(text || '').trim();
+  if (!t) return [];
+  // JSON として読めるか試す
+  if (t[0] === '{' || t[0] === '['){
+    try {
+      const j = JSON.parse(t);
+      const out = [];
+      const take = o => { if (o && typeof o === 'object') out.push(o); };
+      if (Array.isArray(j)) j.forEach(take);
+      else if (Array.isArray(j.notes)) j.notes.forEach(take);
+      else if (j.sections || j.title || j.points || j.summary) take(j);
+      else {
+        // menus/principles で来ても、ノート欄ではノート化する
+        if (Array.isArray(j.principles)) j.principles.forEach(p => take({ title: p.title, summary: p.body, cats: p.cats, kw: p.kw }));
+        if (Array.isArray(j.menus)) j.menus.forEach(m => take({ title: m.name, points: m.points, cats: [m.cat], kw: m.kw }));
+        if (!out.length) take(j);
+      }
+      if (out.length) return out;
+    } catch (e){ /* JSONでなければテキストとして処理 */ }
+  }
+  // テキストとして階層パース
+  return parseNoteText(t);
+}
+
+function noteJsonPreview(){
+  const txt = ($('#note-json').value || '').trim();
+  const box = $('#note-json-preview');
+  if (!txt){ toast('内容を貼り付けてください'); return; }
+
+  let recs;
+  try { recs = parseNoteInput(txt); }
+  catch (e){
+    box.innerHTML = '<div class="hint" style="color:var(--bad)">読み取れませんでした。JSON、または階層テキスト（大見出し→特徴/強み/弱み→・）を貼り付けてください。</div>';
+    return;
+  }
+  if (!recs.length){ box.innerHTML = '<div class="hint" style="color:var(--bad)">取り込めるノートが見つかりませんでした。</div>'; return; }
+
+  NOTE_STAGE = recs.map(o => ({ obj: _autoStructureNote(normalizeNote(o)), use: true }));
+  renderNoteJsonPreview();
+}
+
+function renderNoteJsonPreview(){
+  const box = $('#note-json-preview');
+  let h = '<div class="hint" style="margin-bottom:8px">読み取り結果：指導ノート <b>' + NOTE_STAGE.length + '件</b>。取り込むものにチェックを入れてください。</div>';
+
+  h += NOTE_STAGE.map((s, i) => {
+    const o = s.obj;
+    const badge = '<span class="catchip" style="color:#6EE7D6;background:#6EE7D622;border:1px solid #6EE7D64d">ノート</span>' + catChips(o) + newCatNote(o);
+    const sub = esc((o.summary || '（内容なし）')).replace(/\n/g, '　');
+    return '<div class="adm-row" style="align-items:flex-start">'
+      + '<label style="display:flex;gap:10px;flex:1;cursor:pointer">'
+      +   '<input type="checkbox" data-note-chk="' + i + '"' + (s.use ? ' checked' : '') + ' style="margin-top:3px;width:18px;height:18px;accent-color:var(--acc)">'
+      +   '<div class="ar-main"><div class="ar-name">' + esc(o.title) + '</div>'
+      +     '<div class="ar-sub" style="margin:3px 0 5px;white-space:normal">' + sub + '</div>'
+      +     '<div class="mc-meta">' + badge + '</div></div>'
+      + '</label>'
+      + '</div>';
+  }).join('');
+
+  h += '<button class="btn btn-acc btn-block" data-act="note-json-commit" style="margin-top:12px">チェックしたノートを取り込む</button>'
+     + '<button class="btn btn-ghost btn-block btn-sm" data-act="note-json-clear" style="margin-top:8px">クリア</button>';
+  box.innerHTML = h;
+}
+
+function noteJsonCommit(){
+  const chosen = NOTE_STAGE.filter(s => s.use).map(s => s.obj);
+  if (!chosen.length){ toast('取り込むノートにチェックを入れてください'); return; }
+  Store.notes = Store.upsert(Store.notes, chosen);
+  Store.save();
+  Sync.push();
+  NOTE_STAGE = [];
+  $('#note-json').value = '';
+  renderAdmin();
+  toast('指導ノートを' + chosen.length + '件取り込みました');
+}
+
+function noteJsonClear(){
+  NOTE_STAGE = [];
+  $('#note-json').value = '';
+  const box = $('#note-json-preview');
   if (box) box.innerHTML = '';
 }
 
@@ -4463,6 +4637,9 @@ function bindEvents(){
       case 'ai-edit':       aiEdit(+el.dataset.i); break;
       case 'ai-commit':     aiCommit(); break;
       case 'ai-clear':      aiClear(); break;
+      case 'note-json-preview': noteJsonPreview(); break;
+      case 'note-json-commit':  noteJsonCommit(); break;
+      case 'note-json-clear':   noteJsonClear(); break;
       case 'google-logout': Sync.logout(); break;
       case 'adm-reset':     resetAll(); break;
       case 'adm-reclassify': reclassifyMenus(); break;
@@ -4491,6 +4668,10 @@ function bindEvents(){
     if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-ai-chk')){
       const i = +e.target.getAttribute('data-ai-chk');
       if (AI_STAGE[i]) AI_STAGE[i].use = e.target.checked;
+    }
+    if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-note-chk')){
+      const i = +e.target.getAttribute('data-note-chk');
+      if (NOTE_STAGE[i]) NOTE_STAGE[i].use = e.target.checked;
     }
     if (e.target && e.target.dataset && e.target.dataset.act === 'plan-min'){
       planSetMin(+e.target.dataset.i, e.target.value);
