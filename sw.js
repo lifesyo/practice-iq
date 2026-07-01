@@ -1,5 +1,5 @@
 /* Drill IQ Service Worker */
-const CACHE = 'drilliq-v21';
+const CACHE = 'drilliq-v22';
 const ASSETS = [
   './',
   './index.html',
@@ -29,6 +29,16 @@ self.addEventListener('fetch', e => {
 
   const url = new URL(req.url);
   if (url.origin !== location.origin) return; // 外部（Firebase/YouTube/Gemini等）は素通し
+
+  /* index.html / ナビゲーションは常に最新を優先（ネットワークファースト） */
+  if (req.mode === 'navigate' || url.pathname.endsWith('/index.html') || url.pathname === '/' || url.pathname.endsWith('/')) {
+    e.respondWith(
+      fetch(req)
+        .then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); return res; })
+        .catch(() => caches.match(req).then(hit => hit || caches.match('./index.html')))
+    );
+    return;
+  }
 
   /* data.json は常に最新を優先（オフライン時のみキャッシュ） */
   if (url.pathname.endsWith('/data.json')) {
