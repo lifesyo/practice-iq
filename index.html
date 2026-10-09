@@ -616,6 +616,10 @@ label.lbl .req{color:var(--acc);margin-left:3px}
         <button data-amode="definitions">定義</button>
         <button data-amode="data">データ</button>
       </div>
+      <div class="bookbar" id="adm-searchbar">
+        <input id="adm-q" class="field" type="search" placeholder="名前・目的・説明・キーワードで検索" autocomplete="off">
+      </div>
+      <div class="count" id="adm-count"></div>
       <div id="admin-body"></div>
       <div class="adm-add" id="adm-add"></div>
     </div>
@@ -651,7 +655,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.6.9';
+const APP_VER = '1.7.0';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -2421,7 +2425,14 @@ function renderBook(){
 /* ============================================================
    管理画面
    ============================================================ */
-const ADMIN = { mode: 'menus' };
+const ADMIN = { mode: 'menus', q: { menus: '', principles: '', definitions: '' } };
+
+/* 管理画面の検索：スペース区切りの全語に一致（AND）するものだけ残す */
+function admFilter(list, matchFn){
+  const words = norm(ADMIN.q[ADMIN.mode] || '').split(/\s+/).filter(Boolean);
+  if (!words.length) return list;
+  return list.filter(it => words.every(w => matchFn(it, w)));
+}
 
 function isAdmin(){ return !!Sync.isAdmin; }
 
@@ -2437,10 +2448,24 @@ function renderAdmin(){
   Sync.setStat();
   $$('#adm-seg button').forEach(b => b.classList.toggle('on', b.dataset.amode === ADMIN.mode));
   const body = $('#admin-body'), add = $('#adm-add');
+  const searchable = ADMIN.mode !== 'data';
+  const qBox = $('#adm-q'), cnt = $('#adm-count');
+  $('#adm-searchbar').style.display = searchable ? '' : 'none';
+  cnt.style.display = searchable ? '' : 'none';
+  if (searchable){
+    const ph = { menus: '名前・目的・説明・キーワードで検索', principles: 'タイトル・本文・キーワードで検索', definitions: '用語・本文・キーワードで検索' };
+    qBox.placeholder = ph[ADMIN.mode];
+    if (document.activeElement !== qBox) qBox.value = ADMIN.q[ADMIN.mode] || '';
+  }
+  const setCount = (shown, total) => {
+    cnt.textContent = (ADMIN.q[ADMIN.mode] || '').trim() ? (shown + '件 / 全' + total + '件') : (total + '件');
+  };
+  const noHit = '<div class="empty"><div class="e-t">一致する項目がありません</div><div class="e-d">別のキーワードで試してください</div></div>';
 
   if (ADMIN.mode === 'menus'){
     add.innerHTML = '<button class="btn btn-acc btn-block" data-act="adm-new-menu">＋ 練習メニューを追加</button>';
-    const list = sortByCat(Store.menus.slice());
+    const list = sortByCat(admFilter(Store.menus.slice(), matchMenu));
+    setCount(list.length, Store.menus.length);
     body.innerHTML = list.map(m =>
       '<div class="adm-row"><div class="ar-main">'
       + '<div class="ar-name">' + esc(m.name) + '</div>'
@@ -2450,11 +2475,13 @@ function renderAdmin(){
       + '<button class="btn btn-ghost btn-sm" data-act="adm-edit-menu" data-id="' + esc(m.id) + '">編集</button>'
       + '<button class="btn btn-ghost btn-sm btn-danger" data-act="adm-del-menu" data-id="' + esc(m.id) + '">削除</button>'
       + '</div></div>').join('')
-      || '<div class="empty"><div class="e-t">メニューがありません</div></div>';
+      || (Store.menus.length ? noHit : '<div class="empty"><div class="e-t">メニューがありません</div></div>');
   }
   else if (ADMIN.mode === 'principles'){
     add.innerHTML = '<button class="btn btn-acc btn-block" data-act="adm-new-prin">＋ 原則を追加</button>';
-    body.innerHTML = Store.principles.map(p =>
+    const plist = admFilter(Store.principles, matchPrin);
+    setCount(plist.length, Store.principles.length);
+    body.innerHTML = plist.map(p =>
       '<div class="adm-row"><div class="ar-main">'
       + '<div class="ar-name">' + esc(p.title) + '</div>'
       + '<div class="ar-sub">' + esc(catsOf(p).join('・') || '（なし）') + '</div></div>'
@@ -2462,11 +2489,13 @@ function renderAdmin(){
       + '<button class="btn btn-ghost btn-sm" data-act="adm-edit-prin" data-id="' + esc(p.id) + '">編集</button>'
       + '<button class="btn btn-ghost btn-sm btn-danger" data-act="adm-del-prin" data-id="' + esc(p.id) + '">削除</button>'
       + '</div></div>').join('')
-      || '<div class="empty"><div class="e-t">原則がありません</div></div>';
+      || (Store.principles.length ? noHit : '<div class="empty"><div class="e-t">原則がありません</div></div>');
   }
   else if (ADMIN.mode === 'definitions'){
     add.innerHTML = '<button class="btn btn-acc btn-block" data-act="adm-new-def">＋ 定義を追加</button>';
-    body.innerHTML = Store.definitions.map(d =>
+    const dlist = admFilter(Store.definitions, matchDef);
+    setCount(dlist.length, Store.definitions.length);
+    body.innerHTML = dlist.map(d =>
       '<div class="adm-row"><div class="ar-main">'
       + '<div class="ar-name">' + esc(d.term) + '<span style="color:var(--faint);font-weight:600">　とは</span></div>'
       + '<div class="ar-sub">' + esc(catsOf(d).join('・') || '（カテゴリーなし）') + '</div></div>'
@@ -2474,7 +2503,7 @@ function renderAdmin(){
       + '<button class="btn btn-ghost btn-sm" data-act="adm-edit-def" data-id="' + esc(d.id) + '">編集</button>'
       + '<button class="btn btn-ghost btn-sm btn-danger" data-act="adm-del-def" data-id="' + esc(d.id) + '">削除</button>'
       + '</div></div>').join('')
-      || '<div class="empty"><div class="e-t">定義がありません</div></div>';
+      || (Store.definitions.length ? noHit : '<div class="empty"><div class="e-t">定義がありません</div></div>');
   }
   else {
     add.innerHTML = '';
@@ -4680,6 +4709,8 @@ function bindEvents(){
 
   $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch($('#q').value); });
   $('#book-q').addEventListener('input', () => { BOOK.q = $('#book-q').value; renderBook(); });
+  const admQ = $('#adm-q');
+  if (admQ) admQ.addEventListener('input', () => { ADMIN.q[ADMIN.mode] = admQ.value; renderAdmin(); });
   const noteQ = $('#note-q');
   if (noteQ) noteQ.addEventListener('input', () => { NOTE.q = noteQ.value; renderNotes(); });
   const chatQ = $('#chat-q');
