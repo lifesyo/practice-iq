@@ -217,7 +217,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .sec:last-child{margin-bottom:0}
 .sec .s-lbl{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:900;letter-spacing:.1em;color:var(--sub);margin-bottom:6px}
 .sec .s-lbl::before{content:"";width:3px;height:12px;border-radius:2px;background:var(--acc)}
-.sec p{font-size:14px;line-height:1.8;color:#D6E0EC}
+.sec p{font-size:14px;line-height:1.8;color:#D6E0EC;white-space:pre-line}
 .sec ul{list-style:none}
 .sec ul li{position:relative;padding-left:16px;font-size:13.5px;line-height:1.7;color:#D6E0EC;margin-bottom:4px}
 .sec ul li::before{content:"";position:absolute;left:2px;top:.62em;width:6px;height:6px;border-radius:50%;background:var(--acc-line)}
@@ -414,7 +414,11 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 .sync-bar .sb-stat{font-size:10.5px;color:var(--faint);margin-top:1px}
 .sync-bar .sb-out{font-size:11px;color:var(--sub);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;flex-shrink:0}
 .adm-row{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:8px}
-.adm-row .ar-main{flex:1;min-width:0}
+.adm-row .ar-main{flex:1;min-width:0;cursor:pointer;border-radius:8px;margin:-4px;padding:4px}
+.adm-row .ar-main:active{background:var(--panel2)}
+.yt-embed{position:relative;width:100%;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:#000;margin-bottom:8px}
+.yt-embed iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.pv-note{font-size:11.5px;color:var(--faint);background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 10px;margin-bottom:10px}
 .adm-row .ar-name{font-size:13.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .adm-row .ar-sub{font-size:11px;color:var(--faint);margin-top:2px}
 .adm-row .ar-acts{flex:none;display:flex;gap:6px}
@@ -655,7 +659,7 @@ label.lbl .req{color:var(--acc);margin-left:3px}
 /* ============================================================
    定数・辞書
    ============================================================ */
-const APP_VER = '1.7.0';
+const APP_VER = '1.7.1';
 const SEED_VERSION = 2;            // 初期データのバージョン（data.json運用時はそちらが優先）
 const DEFAULT_PASS = 'coach2026';  // ★管理画面の初期パスコード（管理>データ から変更可能）
 
@@ -1676,7 +1680,6 @@ function resultCard(m, num, opts){
      + '</div></div>';
 
   h += '<div class="r-body">';
-  h += 'X';
   h += '<div class="kv">'
      +   '<div class="k"><div class="kl">必要人数</div><div class="kvv">' + esc(peopleLabel(m)) + '</div></div>'
      +   '<div class="k"><div class="kl">所要時間</div><div class="kvv">' + (+m.time || 0) + '分</div></div>'
@@ -1741,6 +1744,21 @@ function openMenuModal(id){
   const m = Store.menu(id);
   if (!m) return;
   openModal('練習メニュー', resultCard(m, 0));
+}
+/* 管理画面：選手側と同じ表示でメニューを確認する。動画はその場で再生できる。 */
+function openMenuPreview(id){
+  const m = Store.menu(id);
+  if (!m) return;
+  const players = getVids(m).map(url => {
+    const vid = ytId(url);
+    return vid ? '<div class="yt-embed"><iframe src="https://www.youtube-nocookie.com/embed/' + esc(vid)
+      + '?playsinline=1&rel=0" title="参考動画" loading="lazy" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>' : '';
+  }).join('');
+  const h = '<div class="pv-note">選手が見る画面と同じ表示です。</div>'
+    + resultCard(m, 0, { noFoot: true })
+    + (players ? '<div class="sec" style="margin-top:13px"><div class="s-lbl">動画の確認（その場で再生）</div>' + players + '</div>' : '')
+    + '<button class="btn btn-acc btn-block" data-act="adm-edit-menu" data-id="' + esc(m.id) + '" style="margin-top:12px">このメニューを編集する</button>';
+  openModal('プレビュー', h);
 }
 function openPrinModal(id){
   const p = Store.principle(id);
@@ -2458,7 +2476,8 @@ function renderAdmin(){
     if (document.activeElement !== qBox) qBox.value = ADMIN.q[ADMIN.mode] || '';
   }
   const setCount = (shown, total) => {
-    cnt.textContent = (ADMIN.q[ADMIN.mode] || '').trim() ? (shown + '件 / 全' + total + '件') : (total + '件');
+    cnt.textContent = ((ADMIN.q[ADMIN.mode] || '').trim() ? (shown + '件 / 全' + total + '件') : (total + '件'))
+      + (shown ? '　・　名前をタップすると表示を確認できます' : '');
   };
   const noHit = '<div class="empty"><div class="e-t">一致する項目がありません</div><div class="e-d">別のキーワードで試してください</div></div>';
 
@@ -2467,7 +2486,7 @@ function renderAdmin(){
     const list = sortByCat(admFilter(Store.menus.slice(), matchMenu));
     setCount(list.length, Store.menus.length);
     body.innerHTML = list.map(m =>
-      '<div class="adm-row"><div class="ar-main">'
+      '<div class="adm-row"><div class="ar-main" data-act="adm-preview-menu" data-id="' + esc(m.id) + '">'
       + '<div class="ar-name">' + esc(m.name) + '</div>'
       + '<div class="ar-sub">' + esc(catsOf(m).join('・') || '（なし）') + ' ・ ' + (+m.time || 0) + '分 ・ ' + esc(peopleLabel(m))
       + (hasVid(m) ? ' ・ ▶動画あり' : '') + '</div></div>'
@@ -2482,7 +2501,7 @@ function renderAdmin(){
     const plist = admFilter(Store.principles, matchPrin);
     setCount(plist.length, Store.principles.length);
     body.innerHTML = plist.map(p =>
-      '<div class="adm-row"><div class="ar-main">'
+      '<div class="adm-row"><div class="ar-main" data-act="open-prin" data-id="' + esc(p.id) + '">'
       + '<div class="ar-name">' + esc(p.title) + '</div>'
       + '<div class="ar-sub">' + esc(catsOf(p).join('・') || '（なし）') + '</div></div>'
       + '<div class="ar-acts">'
@@ -2496,7 +2515,7 @@ function renderAdmin(){
     const dlist = admFilter(Store.definitions, matchDef);
     setCount(dlist.length, Store.definitions.length);
     body.innerHTML = dlist.map(d =>
-      '<div class="adm-row"><div class="ar-main">'
+      '<div class="adm-row"><div class="ar-main" data-act="open-def" data-id="' + esc(d.id) + '">'
       + '<div class="ar-name">' + esc(d.term) + '<span style="color:var(--faint);font-weight:600">　とは</span></div>'
       + '<div class="ar-sub">' + esc(catsOf(d).join('・') || '（カテゴリーなし）') + '</div></div>'
       + '<div class="ar-acts">'
@@ -4650,6 +4669,7 @@ function bindEvents(){
       case 'google-login':  Sync.login(); break;
       case 'adm-new-menu':  openMenuForm(null); break;
       case 'adm-edit-menu': openMenuForm(el.dataset.id); break;
+      case 'adm-preview-menu': openMenuPreview(el.dataset.id); break;
       case 'adm-del-menu':  delMenu(el.dataset.id); break;
       case 'adm-new-prin':  openPrinForm(null); break;
       case 'adm-edit-prin': openPrinForm(el.dataset.id); break;
